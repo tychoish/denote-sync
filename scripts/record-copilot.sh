@@ -16,11 +16,39 @@ TARGET_FPS=30
 
 export DISPLAY="$DISPLAY_TARGET"
 
-# Helper for StumpWM group switching
-switch_to() {
-    local target="$1"
+# Helper to activate and focus Chrome in StumpWM
+focus_chrome() {
+    local url="${1:-}"
+    if [ -n "$url" ]; then
+        google-chrome-stable "$url" >/dev/null 2>&1 &
+    fi
     if command -v stumpish >/dev/null 2>&1; then
-        stumpish gselect "$target" >/dev/null 2>&1 || true
+        stumpish eval '(let ((w (find-if (lambda (win) (search "Chrome" (stumpwm::window-title win))) (stumpwm::all-windows))))
+                         (when w
+                           (stumpwm::switch-to-group (stumpwm::window-group w))
+                           (stumpwm::focus-window w)))' >/dev/null 2>&1 || true
+    fi
+}
+
+# Helper to activate, switch buffer, and focus Emacs in StumpWM
+focus_emacs() {
+    local buf_name="$1"
+    local setup_code="$2"
+    emacsclient --eval "
+(progn
+  $setup_code
+  (let ((buf (get-buffer-create \"$buf_name\"))
+        (frame (car (filtered-frame-list (lambda (f) (string-match-p \"^work:\" (frame-parameter f 'name)))))))
+    (when frame
+      (with-selected-frame frame
+        (select-window (frame-selected-window frame))
+        (switch-to-buffer buf)))))" >/dev/null 2>&1 || true
+
+    if command -v stumpish >/dev/null 2>&1; then
+        stumpish eval '(let ((w (find-if (lambda (win) (search "work:" (stumpwm::window-title win))) (stumpwm::all-windows))))
+                         (when w
+                           (stumpwm::switch-to-group (stumpwm::window-group w))
+                           (stumpwm::focus-window w)))' >/dev/null 2>&1 || true
     fi
 }
 
@@ -43,7 +71,7 @@ echo "     - Click [Allow] on the Google OAuth consent screen (Step 3)"
 echo "     - Click [Remove Access] on Google Account permissions (Step 5)"
 echo "================================================================================"
 echo ""
-read -r -p "Ready? Press [ENTER] to start recording..."
+read -r -p "Ready? Press [ENTER] to start recording... "
 
 # Detect screen resolution
 SCREEN_RES=$(xdpyinfo -display "$DISPLAY_TARGET" 2>/dev/null | awk '/dimensions:/ {print $2}' || true)
@@ -94,8 +122,7 @@ echo ""
 echo "================================================================================"
 echo " [Step 1/5] Google Cloud Console Credentials (0:00 - 0:15)"
 echo "================================================================================"
-switch_to "net"
-google-chrome-stable "https://console.cloud.google.com/apis/credentials" >/dev/null 2>&1 &
+focus_chrome "https://console.cloud.google.com/apis/credentials"
 wait_or_enter 14 "Showing Google Cloud Console Credentials page with OAuth 2.0 Client ID."
 
 # ------------------------------------------------------------------------------
@@ -105,21 +132,16 @@ echo ""
 echo "================================================================================"
 echo " [Step 2/5] Emacs Authorization Initiation (0:15 - 0:35)"
 echo "================================================================================"
-switch_to "code"
-emacsclient --eval "
-(progn
-  (add-to-list 'load-path \"/home/tychoish/src/denote-sync\")
-  (require 'denote-sync-gdocs nil t)
-  (require 'denote-sync-bootstrap nil t)
-  (switch-to-buffer (get-buffer-create \"*denote-sync-bootstrap*\"))
-  (erase-buffer)
-  (insert \";; denote-sync Google Docs Setup Wizard\n\")
-  (insert \";; Authorizing account: $USER_ACCOUNT\n\")
-  (insert \";; Scope minimization: --drive-scope=file (Sensitive Scope tier)\n\n\")
-  (insert \"[✓] Found gog CLI helper\n\")
-  (insert \"[✓] Keyring configured\n\")
-  (insert \"Opening Google OAuth 2.0 consent in browser for $USER_ACCOUNT...\n\")
-  (select-frame-set-input-focus (selected-frame)))" >/dev/null 2>&1 || true
+focus_emacs "*denote-sync-bootstrap*" "
+  (with-current-buffer (get-buffer-create \"*denote-sync-bootstrap*\")
+    (erase-buffer)
+    (insert \";; denote-sync Google Docs Setup Wizard\n\")
+    (insert \";; Authorizing account: $USER_ACCOUNT\n\")
+    (insert \";; Scope minimization: --drive-scope=file (Sensitive Scope tier)\n\n\")
+    (insert \"[✓] Found gog CLI helper\n\")
+    (insert \"[✓] Keyring configured\n\")
+    (insert \"Opening Google OAuth 2.0 consent in browser for $USER_ACCOUNT...\n\"))"
+
 wait_or_enter 15 "Emacs buffer displaying authorization parameters and --drive-scope=file."
 
 # ------------------------------------------------------------------------------
@@ -129,7 +151,7 @@ echo ""
 echo "================================================================================"
 echo " [Step 3/5] OAuth Consent Screen & Client ID Inspection (0:35 - 0:55)"
 echo "================================================================================"
-switch_to "net"
+focus_chrome
 echo ">>> CRITICAL ACTION REQUIRED:"
 echo ">>> 1. In Chrome, verify you are selecting/authorizing account: $USER_ACCOUNT"
 echo ">>>    (Do NOT select or display tychoish@gmail.com)"
@@ -137,7 +159,7 @@ echo ">>> 2. Move cursor to highlight the URL bar showing client_id=..."
 echo ">>> 3. Review the sensitive permissions (Google Docs & Drive Files)."
 echo ">>> 4. Click [Allow] or [Continue]."
 echo ""
-read -r -p ">>> Once you have clicked Allow, press [ENTER] to continue..."
+read -r -p ">>> Once you have clicked Allow, press [ENTER] to continue... "
 
 # ------------------------------------------------------------------------------
 # STEP 4: Note Synchronization (0:55 - 1:15)
@@ -146,25 +168,21 @@ echo ""
 echo "================================================================================"
 echo " [Step 4/5] Bidirectional Note Synchronization (0:55 - 1:15)"
 echo "================================================================================"
-switch_to "code"
-emacsclient --eval "
-(progn
-  (switch-to-buffer (get-buffer-create \"*denote-sync-demo*\"))
-  (org-mode)
-  (erase-buffer)
-  (insert \"#+title: denote-sync Verification Demo\n\")
-  (insert \"#+date:  [\" (format-time-string \"%Y-%m-%d %a\") \"]\n\")
-  (insert \"#+sync_gdoc_account: $USER_ACCOUNT\n\n\")
-  (insert \"* Synchronization in Action\n\")
-  (insert \"This note demonstrates bidirectional synchronization between local Denote\n\")
-  (insert \"notes and Google Docs via official Docs and Drive APIs.\n\n\")
-  (insert \"[✓] denote-sync-push: successfully exported note!\n\")
-  (select-frame-set-input-focus (selected-frame)))" >/dev/null 2>&1 || true
+focus_emacs "*denote-sync-demo*" "
+  (with-current-buffer (get-buffer-create \"*denote-sync-demo*\")
+    (org-mode)
+    (erase-buffer)
+    (insert \"#+title: denote-sync Verification Demo\n\")
+    (insert \"#+date:  [\" (format-time-string \"%Y-%m-%d %a\") \"]\n\")
+    (insert \"#+sync_gdoc_account: $USER_ACCOUNT\n\n\")
+    (insert \"* Synchronization in Action\n\")
+    (insert \"This note demonstrates bidirectional synchronization between local Denote\n\")
+    (insert \"notes and Google Docs via official Docs and Drive APIs.\n\n\")
+    (insert \"[✓] denote-sync-push: successfully exported note!\n\"))"
 
 wait_or_enter 10 "Showing Emacs Denote note frontmatter (#+sync_gdoc_account: $USER_ACCOUNT)."
 
-switch_to "net"
-google-chrome-stable "https://docs.google.com" >/dev/null 2>&1 &
+focus_chrome "https://docs.google.com"
 wait_or_enter 10 "Showing synced Google Docs interface in browser."
 
 # ------------------------------------------------------------------------------
@@ -174,15 +192,14 @@ echo ""
 echo "================================================================================"
 echo " [Step 5/5] Account Permission Revocation (1:15 - 1:30)"
 echo "================================================================================"
-switch_to "net"
-google-chrome-stable "https://myaccount.google.com/permissions" >/dev/null 2>&1 &
+focus_chrome "https://myaccount.google.com/permissions"
 echo ""
 echo ">>> FINAL ACTION REQUIRED:"
 echo ">>> In Chrome (signed in as $USER_ACCOUNT):"
 echo ">>> Locate 'denote-sync' under Third-party apps."
 echo ">>> Click 'Remove Access' to demonstrate immediate user revocability."
 echo ""
-read -r -p ">>> Once you have clicked Remove Access, press [ENTER] to finish recording..."
+read -r -p ">>> Once you have clicked Remove Access, press [ENTER] to finish recording... "
 
 trap - EXIT INT TERM
 cleanup
