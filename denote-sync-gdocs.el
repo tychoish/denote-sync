@@ -49,6 +49,30 @@ set to the note title."
   :type 'boolean
   :group 'denote-sync-gdocs)
 
+(defcustom denote-sync-gdocs-client-id nil
+  "OAuth 2.0 Client ID for Google Docs synchronization.
+If nil, `gog' uses its registered default client credentials."
+  :type '(choice (const :tag "Default / gog registered" nil)
+                 (string :tag "Client ID"))
+  :group 'denote-sync-gdocs)
+
+(defcustom denote-sync-gdocs-client-secret nil
+  "OAuth 2.0 Client Secret for Google Docs synchronization.
+If nil, `gog' uses its registered default client credentials."
+  :type '(choice (const :tag "Default / gog registered" nil)
+                 (string :tag "Client Secret"))
+  :group 'denote-sync-gdocs)
+
+(defcustom denote-sync-gdocs-drive-scope "file"
+  "Drive scope mode to request when authenticating with `gog'.
+Defaults to \"file\" (https://www.googleapis.com/auth/drive.file) to qualify
+for Google's Sensitive Scope tier and avoid CASA Tier 2 restricted audits.
+Allowed values are \"file\", \"full\", or \"readonly\"."
+  :type '(choice (const :tag "File only (drive.file - Sensitive Scope)" "file")
+                 (const :tag "Full Drive (drive - Restricted Scope)" "full")
+                 (const :tag "Read-only (drive.readonly)" "readonly"))
+  :group 'denote-sync-gdocs)
+
 (defvar denote-sync-gdocs--double-title-answers (make-hash-table :test #'equal)
   "Per-session answers to the \"add title above existing H1?\" prompt, by file.")
 
@@ -527,22 +551,31 @@ Interactively, prompts with completion over all authorized accounts in `gog'."
 ;;;###autoload
 (defun denote-sync-gdocs-add-account (email)
   "Authorize a new Google Account EMAIL using `gog'.
-Runs the OAuth login flow interactively in a process buffer."
+Runs the OAuth login flow interactively in a process buffer with the
+scope mode defined by `denote-sync-gdocs-drive-scope'."
   (interactive "sGoogle account email to authorize: ")
   (let* ((email (string-trim email))
-         (buf (get-buffer-create "*gog-auth*")))
+         (buf (get-buffer-create "*gog-auth*"))
+         (scope (or denote-sync-gdocs-drive-scope "file"))
+         (scope-arg (format "--drive-scope=%s" scope)))
     (when (string-empty-p email)
       (user-error "Email address cannot be empty"))
     (with-current-buffer buf
       (erase-buffer)
-      (insert (format "Starting OAuth authorization for %s...
-
-" email)))
+      (insert (format "Starting OAuth authorization for %s (scope: %s)...\n\n"
+                      email scope)))
     (display-buffer buf)
     (start-process "gog-auth" buf
                    denote-sync-gdocs-gog-executable
-                   "auth" "add" email "--services=docs,drive")
+                   "auth" "add" email "--services=docs,drive" scope-arg)
     (message "Started gog auth for %s in buffer *gog-auth*" email)))
+
+;;;###autoload
+(defun denote-sync-gdocs-setup ()
+  "Run the interactive denote-sync Google Docs onboarding and configuration wizard."
+  (interactive)
+  (require 'denote-sync-bootstrap)
+  (denote-sync-bootstrap))
 
 (provide 'denote-sync-gdocs)
 ;;; denote-sync-gdocs.el ends here

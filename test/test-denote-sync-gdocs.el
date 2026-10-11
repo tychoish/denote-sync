@@ -220,5 +220,95 @@
     ;; Non-interactive: no prompt, no doubling.
     (should (equal (denote-sync-gdocs--with-title "T" "# H\nx" "h") "# H\nx"))))
 
+(ert-deftest test-denote-sync-gdocs/add-account-drive-scope-file ()
+  "`denote-sync-gdocs-add-account' passes --drive-scope=file by default."
+  (let ((captured-args nil))
+    (cl-letf (((symbol-function 'start-process)
+               (lambda (_name _buffer program &rest args)
+                 (setq captured-args (cons program args))
+                 nil))
+              ((symbol-function 'display-buffer) #'ignore))
+      (denote-sync-gdocs-add-account "test@example.com")
+      (should captured-args)
+      (should (member "--drive-scope=file" captured-args))
+      (should (member "--services=docs,drive" captured-args))
+      (should (member "test@example.com" captured-args)))))
+
+(ert-deftest test-denote-sync-gdocs/add-account-custom-scope ()
+  "`denote-sync-gdocs-add-account' respects custom `denote-sync-gdocs-drive-scope'."
+  (let ((captured-args nil)
+        (denote-sync-gdocs-drive-scope "readonly"))
+    (cl-letf (((symbol-function 'start-process)
+               (lambda (_name _buffer program &rest args)
+                 (setq captured-args (cons program args))
+                 nil))
+              ((symbol-function 'display-buffer) #'ignore))
+      (denote-sync-gdocs-add-account "custom@example.com")
+      (should captured-args)
+      (should (member "--drive-scope=readonly" captured-args)))))
+
+(ert-deftest test-denote-sync-gdocs/custom-credentials-variables ()
+  "Client ID, Client Secret, and drive scope custom variables exist."
+  (should (boundp 'denote-sync-gdocs-client-id))
+  (should (boundp 'denote-sync-gdocs-client-secret))
+  (should (boundp 'denote-sync-gdocs-drive-scope))
+  (should (equal denote-sync-gdocs-drive-scope "file")))
+
+(require 'denote-sync-bootstrap)
+
+(ert-deftest test-denote-sync-gdocs/bootstrap-format-user-config ()
+  "`denote-sync-bootstrap-format-user-config' generates valid Elisp configuration."
+  (let* ((dest "~/.emacs.d/user/personal.el")
+         (snippet (denote-sync-bootstrap-format-user-config "user@example.com" "mypass123" dest)))
+    (should (string-match-p "Destination: ~/.emacs.d/user/personal.el" snippet))
+    (should (string-match-p "(setenv \"GOG_KEYRING_PASSWORD\" \"mypass123\")" snippet))
+    (should (string-match-p "(setq denote-sync-gdocs-default-account \"user@example.com\")" snippet))
+    (should (string-match-p "(setq denote-sync-gdocs-drive-scope \"file\")" snippet))
+    (should (string-match-p "add-to-list 'denote-sync-parent-registry" snippet))
+    ;; Verify it can be read without syntax errors
+    (with-temp-buffer
+      (insert snippet)
+      (goto-char (point-min))
+      (should (read (current-buffer))))))
+
+(ert-deftest test-denote-sync-gdocs/bootstrap-check-gog-found ()
+  "`denote-sync-bootstrap-check-gog' returns path when executable is found."
+  (cl-letf (((symbol-function 'executable-find)
+             (lambda (_) "/custom/bin/gog")))
+    (should (equal (denote-sync-bootstrap-check-gog) "/custom/bin/gog"))))
+
+(ert-deftest test-denote-sync-gdocs/bootstrap-check-gog-missing ()
+  "`denote-sync-bootstrap-check-gog' signals user-error when executable is missing."
+  (cl-letf (((symbol-function 'executable-find)
+             (lambda (_) nil)))
+    (should-error (denote-sync-bootstrap-check-gog) :type 'user-error)))
+
+(ert-deftest test-denote-sync-gdocs/bootstrap-configure-keyring ()
+  "`denote-sync-bootstrap-configure-keyring' sets file keyring backend."
+  (let ((captured nil))
+    (cl-letf (((symbol-function 'call-process)
+               (lambda (program _infile _destination _display &rest args)
+                 (setq captured (cons program args))
+                 0)))
+      (denote-sync-bootstrap-configure-keyring)
+      (should (equal captured (list denote-sync-gdocs-gog-executable "auth" "keyring" "file"))))))
+
+(ert-deftest test-denote-sync-gdocs/bootstrap-configure-credentials ()
+  "`denote-sync-bootstrap-configure-credentials' invokes gog with credentials file."
+  (let ((temp-creds (make-temp-file "test-creds-" nil ".json"))
+        (captured nil))
+    (unwind-protect
+        (progn
+          (cl-letf (((symbol-function 'call-process)
+                     (lambda (program _infile _destination _display &rest args)
+                       (setq captured (cons program args))
+                       0)))
+            (denote-sync-bootstrap-configure-credentials temp-creds)
+            (should (equal (car captured) denote-sync-gdocs-gog-executable))
+            (should (member "credentials" captured))
+            (should (member "set" captured))
+            (should (member "--insecure" captured))))
+      (delete-file temp-creds))))
+
 (provide 'test-denote-sync-gdocs)
 ;;; test-denote-sync-gdocs.el ends here

@@ -85,7 +85,7 @@ Google requires an OAuth 2.0 Client ID to access Docs and Drive on your behalf.
      - Developer contact email: your email
    - Under *Scopes*, add:
      - =.../auth/documents=
-     - =.../auth/drive=
+     - =.../auth/drive.file= (Sensitive scope: grants access only to files created/opened by denote-sync; avoids CASA Tier 2 restricted audit)
      - =.../auth/userinfo.email=
      - =openid=
    - Under *Test users*, click *+ ADD USERS* and enter all Google account emails you intend
@@ -141,18 +141,23 @@ Google requires an OAuth 2.0 Client ID to access Docs and Drive on your behalf.
 
 You can authorize one or more Google accounts.
 
+** Automated Onboarding Wizard
+To configure credentials, file keyring, and authorization in one guided step:
+- In Emacs: ~M-x denote-sync-gdocs-setup~ (or ~M-x denote-sync-bootstrap~)
+- In shell: ~scripts/setup-gdocs.sh~
+
 ** Authorizing from the Command Line
 To add an account:
 #+begin_src bash
 export GOG_KEYRING_PASSWORD="your-secure-keyring-passphrase"
-gog auth add user@example.com --services=docs,drive
+gog auth add user@example.com --services=docs,drive --drive-scope=file
 #+end_src
 This command opens your browser to complete Google's OAuth consent flow. Once accepted,
 the token is saved into the encrypted keyring.
 
 To add a second account (e.g. work):
 #+begin_src bash
-gog auth add work@company.com --services=docs,drive
+gog auth add work@company.com --services=docs,drive --drive-scope=file
 #+end_src
 
 ** Authorizing from Inside Emacs

@@ -7,3 +7,5 @@
 \#*\#
 .projectile
 .projectile-cache.eld
+*.mp4
+_site/
