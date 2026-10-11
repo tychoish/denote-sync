@@ -3,8 +3,14 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'denote-sync)
-(require 'denote-sync-gdocs)
+
+;; Ensure local workspace files take precedence over any installed ELPA package
+(let ((repo-dir (file-name-directory (directory-file-name (file-name-directory (or load-file-name (buffer-file-name)))))))
+  (add-to-list 'load-path repo-dir)
+  (load (expand-file-name "denote-sync-gdocs.el" repo-dir) nil t)
+  (load (expand-file-name "denote-sync-bootstrap.el" repo-dir) nil t))
 
 (ert-deftest test-denote-sync-gdocs/extract-doc-id ()
   "Extract doc ID from Google Docs URLs and bare IDs."
@@ -286,7 +292,9 @@
 (ert-deftest test-denote-sync-gdocs/bootstrap-configure-keyring ()
   "`denote-sync-bootstrap-configure-keyring' sets file keyring backend."
   (let ((captured nil))
-    (cl-letf (((symbol-function 'call-process)
+    (cl-letf (((symbol-function 'denote-sync-bootstrap-check-gog)
+               (lambda () "/bin/gog"))
+              ((symbol-function 'call-process)
                (lambda (program _infile _destination _display &rest args)
                  (setq captured (cons program args))
                  0)))
@@ -299,7 +307,9 @@
         (captured nil))
     (unwind-protect
         (progn
-          (cl-letf (((symbol-function 'call-process)
+          (cl-letf (((symbol-function 'denote-sync-bootstrap-check-gog)
+                     (lambda () "/bin/gog"))
+                    ((symbol-function 'call-process)
                      (lambda (program _infile _destination _display &rest args)
                        (setq captured (cons program args))
                        0)))
