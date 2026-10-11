@@ -25,7 +25,7 @@
 
 (ert-deftest test-mdwn/lists ()
   (should (equal (test-mdwn--conv "- a\n  - nested\n- b") "- a\n  - nested\n- b"))
-  (should (equal (test-mdwn--conv "3. one\n4. two") "3. one\n4. two"))
+  (should (equal (test-mdwn--conv "3. one\n4. two") "3. [@3] one\n4. two"))
   (should (equal (test-mdwn--conv "- [ ] todo\n- [x] done") "- [ ] todo\n- [X] done")))
 
 (ert-deftest test-mdwn/blocks ()
@@ -35,7 +35,7 @@
   (should (equal (test-mdwn--conv "```\nplain\n```") "#+begin_src\nplain\n#+end_src"))
   (should (equal (test-mdwn--conv "a\n\n---\n\nb") "a\n\n-----\n\nb"))
   (should (equal (test-mdwn--conv "| a | **b** |\n|---|---|\n| 1 | 2 |")
-                 "| a | *b* |\n|-\n| 1 | 2 |")))
+                 "| a | *b* |\n|---+-----|\n| 1 |   2 |")))
 
 (ert-deftest test-mdwn/missing-grammar-signals-user-error ()
   (let ((mdwn-install-grammars nil))
