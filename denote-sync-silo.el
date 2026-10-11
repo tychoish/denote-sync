@@ -318,6 +318,27 @@ OPTS is a plist: `:strip' drops the signature; `:source-prefix' and
             joined))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Tag mapping
+
+(defun denote-sync-silo--map-keywords (keywords opts)
+  "Return source KEYWORDS transformed by the tag options in plist OPTS.
+`:tags' replaces them (a list, or a function of the keyword list);
+`:remove-tags' is then subtracted and `:add-tags' appended.  Result is
+sorted and duplicate-free."
+  (let* ((tags (plist-get opts :tags))
+         (kw (cond ((functionp tags) (funcall tags keywords))
+                   ((plist-member opts :tags) tags)
+                   (t keywords))))
+    (setq kw (seq-difference kw (plist-get opts :remove-tags)))
+    (sort (delete-dups (append kw (plist-get opts :add-tags))) #'string<)))
+
+(defun denote-sync-silo--tag-opts (plist)
+  "Return the tag options (`:tags', `:add-tags', `:remove-tags') in PLIST."
+  (cl-loop for key in '(:tags :add-tags :remove-tags)
+           when (plist-member plist key)
+           append (list key (plist-get plist key))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Target note operations
 
 (defun denote-sync-silo--fresh-id (dir &optional avoid)
@@ -341,12 +362,11 @@ OPTS is a plist: `:strip' drops the signature; `:source-prefix' and
   (or (ignore-errors (date-to-time (denote-retrieve-filename-identifier file)))
       (current-time)))
 
-(defun denote-sync-silo--write-note (dir id signature file type body &optional existing)
-  "Write FILE's note as ID with SIGNATURE and BODY of TYPE into DIR.
+(defun denote-sync-silo--write-note (dir id signature file type body keywords &optional existing)
+  "Write FILE's note as ID with SIGNATURE, KEYWORDS and BODY of TYPE into DIR.
 When EXISTING is non-nil the note is updated (and renamed if needed).
 Return the target path."
   (let* ((title (denote-sync--export-title file))
-         (keywords (denote-extract-keywords-from-path file))
          (path (denote-format-file-name dir id keywords title
                                         (denote--file-extension type) (or signature "")))
          (text (concat (denote--format-front-matter
@@ -399,9 +419,14 @@ Return the target path."
                                    :source-prefix (plist-get parent :source-prefix)
                                    :target-prefix (plist-get parent :target-prefix)
                                    :scheme (plist-get parent :scheme)))))
+         (keywords (if planned
+                       (plist-get planned :keywords)
+                     (denote-sync-silo--map-keywords
+                      (denote-extract-keywords-from-path file)
+                      (denote-sync-silo--tag-opts parent))))
          (body (denote-sync-silo--target-body
                 file content type (eq (plist-get parent :rewrite-links) 'none)))
-         (path (denote-sync-silo--write-note dir id signature file type body)))
+         (path (denote-sync-silo--write-note dir id signature file type body keywords)))
     (denote-sync-frontmatter-set file (denote-sync--prop-key "silo" "dir") (expand-file-name dir))
     (denote-sync-silo--result id path)))
 
@@ -420,9 +445,13 @@ Return the target path."
            (signature (if planned
                           (plist-get planned :signature)
                         (denote-retrieve-filename-signature existing)))
+           ;; without a plan the target's own tags are kept
+           (keywords (if planned
+                         (plist-get planned :keywords)
+                       (denote-extract-keywords-from-path existing)))
            (body (denote-sync-silo--target-body
                   file content type (eq (plist-get planned :rewrite-links) 'none)))
-           (path (denote-sync-silo--write-note dir id signature file type body existing)))
+           (path (denote-sync-silo--write-note dir id signature file type body keywords existing)))
       (denote-sync-silo--result id path))))
 
 (defun denote-sync-silo--fetch-remote (id &optional fetch-body-p)
@@ -526,8 +555,13 @@ The target's signature is kept unless the source directory already uses it."
 
 (defun denote-sync-silo--format-parent (parent)
   "Format PARENT plist for display."
-  (format "%s (%s)" (plist-get parent :directory)
-          (or (plist-get parent :target-format) denote-sync-silo-default-format)))
+  (format "%s (%s)%s" (plist-get parent :directory)
+          (or (plist-get parent :target-format) denote-sync-silo-default-format)
+          (if (denote-sync-silo--tag-opts parent) " [tags]" "")))
+
+(defun denote-sync-silo--read-tag-list (prompt)
+  "Read a comma-separated tag list with PROMPT."
+  (split-string (read-string prompt) "[, ]+" t))
 
 (defun denote-sync-silo--candidate-directories ()
   "Return known silo directories from `denote-silo' and the parent registry."
@@ -547,18 +581,26 @@ The target's signature is kept unless the source directory already uses it."
          (fmt (completing-read "Target format: "
                                '("same" "org" "markdown-yaml" "markdown-toml" "text")
                                nil t nil nil "same")))
-    (list :directory (expand-file-name dir) :target-format (intern fmt))))
+    (append (list :directory (expand-file-name dir) :target-format (intern fmt))
+            (when-let* ((add (denote-sync-silo--read-tag-list "Add tags (comma separated, optional): ")))
+              (list :add-tags add))
+            (when-let* ((rm (denote-sync-silo--read-tag-list "Remove tags (comma separated, optional): ")))
+              (list :remove-tags rm)))))
 
 ;;;###autoload
 (cl-defun denote-sync-silo-add-rule (&key name source-prefix target-directory
                                           target-prefix target-parent target-format
-                                          scheme strip-signature (rewrite-links t))
+                                          scheme strip-signature (rewrite-links t)
+                                          (tags nil tags-p) add-tags remove-tags)
   "Register a tree sync rule NAME and a matching parent registry entry.
 SOURCE-PREFIX is the root signature to export; TARGET-DIRECTORY the silo.
 Rebase to TARGET-PREFIX, or allocate a new child of TARGET-PARENT in the
 silo on first export.  TARGET-FORMAT is `same' or a Denote file type,
 SCHEME converts the sequence scheme, STRIP-SIGNATURE drops signatures, and
-REWRITE-LINKS (default t) rewrites links to exported notes."
+REWRITE-LINKS (default t) rewrites links to exported notes.  Target tags
+derive from each source note's: TAGS replaces them (a list, or a function
+from the source tag list to the new list), REMOVE-TAGS are dropped, then
+ADD-TAGS appended."
   (unless (and name source-prefix target-directory)
     (user-error "A rule needs :name, :source-prefix and :target-directory"))
   (let ((rule (list :name name :source-prefix source-prefix
@@ -566,7 +608,9 @@ REWRITE-LINKS (default t) rewrites links to exported notes."
                     :target-prefix target-prefix :target-parent target-parent
                     :target-format (or target-format 'same) :scheme scheme
                     :strip-signature strip-signature
-                    :rewrite-links (if rewrite-links t 'none))))
+                    :rewrite-links (if rewrite-links t 'none)
+                    :add-tags add-tags :remove-tags remove-tags)))
+    (when tags-p (setq rule (plist-put rule :tags tags)))
     (setq denote-sync-silo-rules
           (cons rule (seq-remove (lambda (r) (equal (plist-get r :name) name))
                                  denote-sync-silo-rules)))
@@ -610,7 +654,7 @@ REWRITE-LINKS (default t) rewrites links to exported notes."
 
 (defun denote-sync-silo--plan-tree (rule)
   "Return a list of (FILE . PLIST) for RULE's tree, parents before children.
-Each PLIST has :id, :signature, :format and :rewrite-links."
+Each PLIST has :id, :signature, :keywords, :format and :rewrite-links."
   (let* ((prefix (plist-get rule :source-prefix))
          (dir (plist-get rule :directory))
          (files (sort (copy-sequence (denote-sequence-get-all-files-with-prefix prefix))
@@ -642,6 +686,9 @@ Each PLIST has :id, :signature, :format and :rewrite-links."
                                  :strip (plist-get rule :strip-signature)
                                  :source-prefix prefix :target-prefix tprefix
                                  :scheme (plist-get rule :scheme))
+                     :keywords (denote-sync-silo--map-keywords
+                                (denote-extract-keywords-from-path file)
+                                (denote-sync-silo--tag-opts rule))
                      :format (plist-get rule :target-format)
                      :rewrite-links (plist-get rule :rewrite-links)))))
      files)))
@@ -651,12 +698,14 @@ Each PLIST has :id, :signature, :format and :rewrite-links."
 
 (defun denote-sync-silo--needs-move-p (file entry dir)
   "Return non-nil if FILE's existing target note differs from ENTRY's plan.
-That is, its signature or file type no longer matches, so it must be
+That is, its signature, tags or file type no longer matches, so it must be
 rewritten even though the body is unchanged."
   (when-let* ((existing (denote-sync-silo-with-target dir
                           (denote-get-path-by-id (plist-get entry :id)))))
     (or (not (equal (or (denote-retrieve-filename-signature existing) "")
                     (or (plist-get entry :signature) "")))
+        (not (equal (sort (copy-sequence (denote-extract-keywords-from-path existing)) #'string<)
+                    (plist-get entry :keywords)))
         (not (eq (denote-filetype-heuristics existing)
                  (denote-sync-silo--resolve-type file (plist-get entry :format)))))))
 

@@ -375,6 +375,23 @@ If BACKEND is nil, searches across all registered backends."
         (denote-retrieve-filename-title file)
         (file-name-base file))))
 
+(defmacro denote-sync--with-path-cache (&rest body)
+  "Run BODY with `denote-get-path-by-id' memoized for this call.
+Each lookup scans the whole `denote-directory', and a note with hundreds
+of `denote:' links pays that per link.  Only found paths are cached, keyed
+by `denote-directory', so a note created while BODY runs is still found."
+  (declare (indent 0))
+  (let ((cache (make-symbol "cache")) (orig (make-symbol "orig")))
+    `(let ((,cache (make-hash-table :test 'equal))
+           (,orig (symbol-function 'denote-get-path-by-id)))
+       (cl-letf (((symbol-function 'denote-get-path-by-id)
+                  (lambda (id)
+                    (let ((key (cons denote-directory id)))
+                      (or (gethash key ,cache)
+                          (when-let* ((path (funcall ,orig id)))
+                            (puthash key path ,cache)))))))
+         ,@body))))
+
 (defun denote-sync--org-to-markdown (org-body)
   "Convert ORG-BODY (a string of Org markup) to Markdown via `ox-gfm'.
 Source blocks are exported verbatim, never evaluated: a note body is
@@ -385,13 +402,14 @@ data, and this runs on every sync-state check."
     (org-mode)
     (let* ((org-export-use-babel nil)
            (md-buffer
-           (cl-letf (((symbol-function 'denote-link-ol-export)
-                      (lambda (link description _format)
-                        (pcase-let ((`(,_path ,query ,_search)
-                                     (denote-link--ol-resolve-link-to-target link :full-data)))
-                          (format "[%s](denote:%s)" description query)))))
-             (org-export-to-buffer 'gfm (generate-new-buffer-name "*denote-sync-md*")
-                                   nil nil nil nil '(:with-toc nil)))))
+           (denote-sync--with-path-cache
+             (cl-letf (((symbol-function 'denote-link-ol-export)
+                        (lambda (link description _format)
+                          (pcase-let ((`(,_path ,query ,_search)
+                                       (denote-link--ol-resolve-link-to-target link :full-data)))
+                            (format "[%s](denote:%s)" description query)))))
+               (org-export-to-buffer 'gfm (generate-new-buffer-name "*denote-sync-md*")
+                                     nil nil nil nil '(:with-toc nil))))))
       (unwind-protect
           (with-current-buffer md-buffer
             (string-trim (buffer-substring-no-properties (point-min) (point-max))))
@@ -424,7 +442,8 @@ data, and this runs on every sync-state check."
   "Rewrite `denote:' Markdown links in BODY to BACKEND's URLs."
   (let* (dangling
          (rewritten
-          (replace-regexp-in-string
+          (denote-sync--with-path-cache
+           (replace-regexp-in-string
            denote-md-link-in-context-regexp
            (lambda (whole-match)
              (save-match-data
@@ -450,7 +469,7 @@ data, and this runs on every sync-state check."
                                source-file)
                          dangling)
                    desc)))))
-           body)))
+           body))))
     (cons rewritten (nreverse dangling))))
 
 (defun denote-sync--export-body (file backend)

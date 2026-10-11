@@ -93,7 +93,10 @@ Basic =use-package= configuration:
    :source-prefix "1=2"
    :target-directory "~/Documents/public-wiki/"
    :target-prefix "5"
-   :target-format 'markdown-yaml))
+   :target-format 'markdown-yaml
+   ;; optional: retag on the destination side (also :tags, a list or function)
+   :add-tags '("public")
+   :remove-tags '("draft")))
 #+end_src
 
 * Commands & API

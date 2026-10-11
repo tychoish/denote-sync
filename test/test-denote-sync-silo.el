@@ -398,3 +398,28 @@
 
 (provide 'test-denote-sync-silo)
 ;;; test-denote-sync-silo.el ends here
+
+(ert-deftest test-denote-sync-silo/map-keywords ()
+  (should (equal (denote-sync-silo--map-keywords '("a" "b") nil) '("a" "b")))
+  (should (equal (denote-sync-silo--map-keywords '("a" "b") '(:tags ("x"))) '("x")))
+  (should (equal (denote-sync-silo--map-keywords '("a" "b") '(:tags nil :add-tags ("z"))) '("z")))
+  (should (equal (denote-sync-silo--map-keywords '("a" "b") '(:remove-tags ("a") :add-tags ("c" "b")))
+                 '("b" "c")))
+  (should (equal (denote-sync-silo--map-keywords '("a") `(:tags ,(lambda (k) (append k '("f")))))
+                 '("a" "f"))))
+
+(ert-deftest test-denote-sync-silo/tree-export-changes-tags-and-moves-on-rule-change ()
+  (test-silo--with-silos
+   (test-silo--note src "20261009T100000" "1" "alpha" "A")
+   (let ((tags (lambda ()
+                 (mapcar #'denote-extract-keywords-from-path
+                         (denote-sync-silo-with-target tgt (denote-directory-files))))))
+     (denote-sync-silo-add-rule :name "p" :source-prefix "1" :target-directory tgt
+                                :add-tags '("pub") :remove-tags '("t"))
+     (denote-sync-silo-export-tree "p")
+     (should (equal (funcall tags) '(("pub"))))
+     (denote-sync-silo-add-rule :name "p" :source-prefix "1" :target-directory tgt
+                                :tags '("only"))
+     (denote-sync-silo-export-tree "p")
+     (should (equal (funcall tags) '(("only"))))
+     (should (= 1 (length (denote-sync-silo-with-target tgt (denote-directory-files))))))))
