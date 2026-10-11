@@ -45,6 +45,18 @@ Hello world body.
       (when-let* ((b (find-buffer-visiting file))) (kill-buffer b))
       (delete-file file))))
 
+(ert-deftest test-denote-sync/export-title-prefers-front-matter ()
+  (let ((dir (file-name-as-directory (make-temp-file "dsync-title" t))))
+    (unwind-protect
+        (let ((file (expand-file-name "20260101T000000--my-title__t.md" dir))
+              (bare (expand-file-name "20260101T000001--only-slug__t.md" dir)))
+          (with-temp-file file
+            (insert "---\ntitle: \"My Title, Properly Cased\"\nidentifier: \"20260101T000000\"\n---\n\nx\n"))
+          (with-temp-file bare (insert "no front matter\n"))
+          (should (equal (denote-sync--export-title file) "My Title, Properly Cased"))
+          (should (equal (denote-sync--export-title bare) "only-slug")))
+      (delete-directory dir t))))
+
 (ert-deftest test-denote-sync/dash-regexps-match-org-keyword-lines ()
   (let ((re (denote-sync--frontmatter-nonempty-value-regexp "silo_id")))
     (should (string-match-p re "silo_id: \"x\""))

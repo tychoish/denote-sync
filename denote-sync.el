@@ -325,9 +325,13 @@ If BACKEND is nil, searches across all registered backends."
     (save-buffer)))
 
 (defun denote-sync--export-title (file)
-  "Return FILE's title from Denote metadata or filename."
-  (or (denote-retrieve-filename-title file)
-      (file-name-base file)))
+  "Return FILE's title: its front-matter title, else filename title or base."
+  (let ((title (ignore-errors
+                 (denote-retrieve-front-matter-title-value
+                  file (denote-filetype-heuristics file)))))
+    (or (and title (not (string-empty-p title)) title)
+        (denote-retrieve-filename-title file)
+        (file-name-base file))))
 
 (defun denote-sync--org-to-markdown (org-body)
   "Convert ORG-BODY (a string of Org markup) to Markdown via `ox-gfm'."
