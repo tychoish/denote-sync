@@ -123,14 +123,25 @@ PROPERTIES is an optional alist of metadata properties."
   "Return a regexp matching a front-matter line for KEY."
   (format "^%s:[ \t]*\\(.*\\)$" (regexp-quote key)))
 
+(defun denote-sync--org-file-p (file)
+  "Return non-nil if FILE is an Org note, whose metadata is `#+KEY:' lines."
+  (string-suffix-p ".org" file))
+
+(defun denote-sync--frontmatter-key-regexp (file key)
+  "Return a regexp matching the front-matter line for KEY in FILE."
+  (if (denote-sync--org-file-p file)
+      (format "^#\\+%s:[ \t]*\\(.*\\)$" (regexp-quote key))
+    (denote-sync--frontmatter-line-regexp key)))
+
 (defun denote-sync-frontmatter-get (file key)
   "Return the raw string value of KEY from FILE's front matter, or nil."
   (when (file-readable-p file)
     (with-temp-buffer
       (insert-file-contents file)
       (goto-char (point-min))
-      (when (re-search-forward (denote-sync--frontmatter-line-regexp key) nil t)
-        (string-trim (match-string 1))))))
+      (let ((case-fold-search (denote-sync--org-file-p file)))
+        (when (re-search-forward (denote-sync--frontmatter-key-regexp file key) nil t)
+          (string-trim (match-string 1)))))))
 
 (defun denote-sync--frontmatter-format-value (value)
   "Format VALUE as a string suitable for YAML front matter."
@@ -140,33 +151,46 @@ PROPERTIES is an optional alist of metadata properties."
     (concat "[" (string-join (mapcar (lambda (v) (format "%S" v)) value) ", ") "]"))
    (t (format "%S" value))))
 
+(defun denote-sync--frontmatter-set-org (key value)
+  "Set the Org `#+KEY:' line to VALUE in the current buffer."
+  (let ((text (cond ((null value) "") ((stringp value) value) (t (format "%s" value))))
+        (case-fold-search t))
+    (goto-char (point-min))
+    (if (re-search-forward (denote-sync--frontmatter-key-regexp "x.org" key) nil t)
+        (replace-match (concat "#+" key ": " text) t t)
+      (goto-char (point-min))
+      (while (looking-at "^#\\+") (forward-line 1))
+      (insert "#+" key ": " text "\n"))))
+
 (defun denote-sync-frontmatter-set (file key value)
   "Set KEY to VALUE in FILE's front matter.
 Replaces the line if KEY exists; inserts it before the closing delimiter
-if missing."
+if missing.  Org notes use `#+KEY: VALUE' lines instead of YAML."
   (let ((formatted (denote-sync--frontmatter-format-value value)))
     (with-current-buffer (find-file-noselect file)
       (save-excursion
-        (goto-char (point-min))
-        (if (re-search-forward (denote-sync--frontmatter-line-regexp key) nil t)
-            (replace-match (concat key ": " formatted))
+        (if (denote-sync--org-file-p file)
+            (denote-sync--frontmatter-set-org key value)
           (goto-char (point-min))
-          (if (re-search-forward "^---[ \t]*$" nil t 2)
-              (progn
-                (goto-char (match-beginning 0))
-                (insert key ": " formatted "\n"))
+          (if (re-search-forward (denote-sync--frontmatter-line-regexp key) nil t)
+              (replace-match (concat key ": " formatted))
             (goto-char (point-min))
-            (if (re-search-forward "^---[ \t]*$" nil t 1)
+            (if (re-search-forward "^---[ \t]*$" nil t 2)
                 (progn
-                  (forward-line 1)
+                  (goto-char (match-beginning 0))
                   (insert key ": " formatted "\n"))
               (goto-char (point-min))
-              (insert "---\n" key ": " formatted "\n---\n")))))
+              (if (re-search-forward "^---[ \t]*$" nil t 1)
+                  (progn
+                    (forward-line 1)
+                    (insert key ": " formatted "\n"))
+                (goto-char (point-min))
+                (insert "---\n" key ": " formatted "\n---\n"))))))
       (save-buffer))))
 
 (defun denote-sync--frontmatter-nonempty-value-regexp (key)
   "Return a regexp matching KEY with a non-empty, non-quoted-empty value."
-  (concat "^" (regexp-quote key) ":[ \t]*\\([^ \t\r\n\"']+\\|\"[^\"]+\"\\|'[^']+'\\)"))
+  (concat "^\\(?:#\\+\\)?" (regexp-quote key) ":[ \t]*\\([^ \t\r\n\"']+\\|\"[^\"]+\"\\|'[^']+'\\)"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Backend-specific frontmatter queries
@@ -1035,7 +1059,7 @@ With REMOTE-ID (an id or URL):
     (when b
       (let* ((name (format "%s: conflicts" (denote-sync-backend-name b)))
              (p (denote-sync-backend-frontmatter-prefix b))
-             (regex (format "^%s_conflict:[ \t]*t[ \t]*$" p)))
+             (regex (format "^\\(?:#\\+\\)?%s_conflict:[ \t]*t[ \t]*$" p)))
         (denote-sync--dash-register-view name regex)
         (denote-dash-open-view name)))))
 
@@ -1053,7 +1077,7 @@ With REMOTE-ID (an id or URL):
     (when b
       (let* ((name (format "%s: remote-updated" (denote-sync-backend-name b)))
              (p (denote-sync-backend-frontmatter-prefix b))
-             (regex (format "^%s_remote_dirty:[ \t]*t[ \t]*$" p)))
+             (regex (format "^\\(?:#\\+\\)?%s_remote_dirty:[ \t]*t[ \t]*$" p)))
         (denote-sync--dash-register-view name regex)
         (dolist (file (denote-directory-files))
           (when (denote-sync-tracked-p file b)

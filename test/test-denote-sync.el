@@ -24,6 +24,33 @@ Hello world body.
     (should (memq dummy (denote-sync-registered-backends)))
     (setq denote-sync-backends (assq-delete-all 'test-backend denote-sync-backends))))
 
+(ert-deftest test-denote-sync/org-frontmatter-get-and-set ()
+  "Org notes keep sync properties as #+KEY: lines, never a YAML block."
+  (let ((file (make-temp-file "dsync-org" nil ".org")))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "#+title: T\n#+identifier: 20260101T000000\n\nBody\n"))
+          (denote-sync-frontmatter-set file "silo_id" "20990101T000000")
+          (should (equal (denote-sync-frontmatter-get file "silo_id") "20990101T000000"))
+          (denote-sync-frontmatter-set file "silo_id" "20990202T000000")
+          (denote-sync-frontmatter-set file "silo_conflict" t)
+          (should (equal (denote-sync-frontmatter-get file "silo_id") "20990202T000000"))
+          (should (equal (denote-sync-frontmatter-get file "silo_conflict") "t"))
+          (with-temp-buffer
+            (insert-file-contents file)
+            (should-not (string-match-p "^---" (buffer-string)))
+            (should (string-match-p "\n\nBody\n" (buffer-string)))
+            (should (= 1 (how-many "^#\\+silo_id:" (point-min))))))
+      (when-let* ((b (find-buffer-visiting file))) (kill-buffer b))
+      (delete-file file))))
+
+(ert-deftest test-denote-sync/dash-regexps-match-org-keyword-lines ()
+  (let ((re (denote-sync--frontmatter-nonempty-value-regexp "silo_id")))
+    (should (string-match-p re "silo_id: \"x\""))
+    (should (string-match-p re "#+silo_id: 2026"))
+    (should-not (string-match-p re "#+silo_id:"))))
+
 (ert-deftest test-denote-sync/unknown-backend-signals-error ()
   "Querying an unregistered backend name signals an error."
   (should-error (denote-sync-get-backend 'nonexistent-backend)))
