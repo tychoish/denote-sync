@@ -9,7 +9,7 @@
 
 ;;; Commentary:
 ;; A backend-agnostic synchronization engine for Denote notes.
-;; Provides content-hash change detection, three-way ediff conflict resolution,
+;; Provides change-key change detection, three-way ediff conflict resolution,
 ;; bounded concurrent batch sync, and denote-dash saved views, parameterized
 ;; across pluggable backends (such as Notion and Google Docs).
 
@@ -515,14 +515,50 @@ data, and this runs on every sync-state check."
   (with-temp-file (denote-sync--cache-file-for backend-name remote-id)
     (insert content)))
 
-(defun denote-sync--content-hash (content)
-  "Return SHA-1 content hash of CONTENT."
-  (secure-hash 'sha1 content))
+(defconst denote-sync--denote-id-in-body-regexp
+  "denote:\\([0-9]\\{8\\}T[0-9]\\{6\\}\\)"
+  "Match a `denote:' link and capture the target identifier.")
+
+(defun denote-sync--link-map (body backend)
+  "Return the sorted `ID=REMOTE' lines for the `denote:' links in BODY.
+REMOTE is the id BACKEND holds for the linked note, or `-' when that note
+is not tracked.  A link renders differently once its target is tracked, so
+the map belongs in the change key."
+  (let (ids)
+    (with-temp-buffer
+      (insert body)
+      (goto-char (point-min))
+      (while (re-search-forward denote-sync--denote-id-in-body-regexp nil t)
+        (cl-pushnew (match-string 1) ids :test #'equal)))
+    (denote-sync--with-path-cache
+      (mapcar (lambda (id)
+                (let ((target (denote-get-path-by-id id)))
+                  (format "%s=%s" id
+                          (or (and target
+                                   (denote-sync-tracked-p target backend)
+                                   (denote-sync--get-id target backend))
+                              "-"))))
+              (sort ids #'string<)))))
+
+(defun denote-sync--change-key (file backend)
+  "Return FILE's format-independent change key for BACKEND.
+The key hashes the note's own body and the link map, so it needs no
+export to Markdown or any other transport format."
+  (let ((body (denote-sync--body-without-front-matter file)))
+    (secure-hash 'sha1 (concat body "\0"
+                               (string-join
+                                (denote-sync--link-map body backend) "\n")))))
+
+(defun denote-sync--local-changed-p (file backend stored-hash)
+  "Return non-nil if FILE changed locally since STORED-HASH for BACKEND."
+  (or (string-empty-p stored-hash)
+      (not (equal stored-hash (denote-sync--change-key file backend)))))
 
 (defun denote-sync--record-synced-content (file backend id content &optional edited-time)
   "Record CONTENT and EDITED-TIME for FILE under BACKEND and ID."
   (let ((p (denote-sync-backend-frontmatter-prefix backend)))
-    (denote-sync-frontmatter-set file (denote-sync--prop-key p "sync-hash") (denote-sync--content-hash content))
+    (denote-sync-frontmatter-set file (denote-sync--prop-key p "sync-hash")
+                                 (denote-sync--change-key file backend))
     (when (and edited-time (not (string-empty-p edited-time)))
       (denote-sync-frontmatter-set file (denote-sync--prop-key p "edited") edited-time))
     (denote-sync--cache-write (denote-sync-backend-name backend) id content)))
@@ -549,8 +585,7 @@ data, and this runs on every sync-state check."
   (let* ((id (denote-sync--get-id file backend))
          (stored-hash (or (denote-sync--get-sync-hash file backend) ""))
          (stored-edited (or (denote-sync--get-edited file backend) ""))
-         (local-hash (denote-sync--content-hash (car (denote-sync--export-body file backend))))
-         (local-changed-p (or (string-empty-p stored-hash) (not (equal local-hash stored-hash))))
+         (local-changed-p (denote-sync--local-changed-p file backend stored-hash))
          (remote (funcall (denote-sync-backend-fetch-remote-fn backend) id nil))
          (remote-edited (plist-get remote :edited-time))
          (remote-changed-p (denote-sync--remote-timestamp-stale-p stored-edited remote-edited)))
@@ -564,8 +599,7 @@ data, and this runs on every sync-state check."
   (let* ((id (denote-sync--get-id file backend))
          (stored-hash (or (denote-sync--get-sync-hash file backend) ""))
          (stored-edited (or (denote-sync--get-edited file backend) ""))
-         (local-hash (denote-sync--content-hash (car (denote-sync--export-body file backend))))
-         (local-changed-p (or (string-empty-p stored-hash) (not (equal local-hash stored-hash)))))
+         (local-changed-p (denote-sync--local-changed-p file backend stored-hash)))
     (funcall (denote-sync-backend-async-fetch-remote-fn backend)
              id
              (lambda (error remote)

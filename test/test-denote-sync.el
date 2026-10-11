@@ -211,3 +211,48 @@ Hello world body.
 
 (provide 'test-denote-sync)
 ;;; test-denote-sync.el ends here
+
+;;; Format-independent change key
+
+(defun test-denote-sync--change-key-note (body)
+  "Write an org note with BODY to a temp dir and return its path."
+  (let* ((dir (make-temp-file "dsync-key-" t))
+         (file (expand-file-name "20261011T100000--key__t.org" dir)))
+    (with-temp-file file
+      (insert "#+title: key\n#+identifier: 20261011T100000\n\n" body "\n"))
+    file))
+
+(ert-deftest test-denote-sync/change-key-ignores-front-matter ()
+  (let* ((file (test-denote-sync--change-key-note "Body text"))
+         (b (denote-sync-backend-create :name 'fake :frontmatter-prefix "fake"))
+         (before (denote-sync--change-key file b)))
+    (should (string-match-p "\\`[0-9a-f]\\{40\\}\\'" before))
+    (with-temp-file file
+      (insert "#+title: renamed\n#+identifier: 20261011T100000\n#+sync-fake-id: x\n\nBody text\n"))
+    (should (equal before (denote-sync--change-key file b)))))
+
+(ert-deftest test-denote-sync/change-key-tracks-body-edits ()
+  (let* ((file (test-denote-sync--change-key-note "Body text"))
+         (b (denote-sync-backend-create :name 'fake :frontmatter-prefix "fake"))
+         (before (denote-sync--change-key file b)))
+    (denote-sync--write-body file "Body text, edited")
+    (should-not (equal before (denote-sync--change-key file b)))))
+
+(ert-deftest test-denote-sync/change-key-tracks-link-target-becoming-tracked ()
+  (let* ((file (test-denote-sync--change-key-note "See [[denote:20261011T110000][other]]"))
+         (b (denote-sync-backend-create :name 'fake :frontmatter-prefix "fake"))
+         (target (test-denote-sync--change-key-note "x")))
+    (cl-letf (((symbol-function 'denote-get-path-by-id) (lambda (_id) target)))
+      (let ((untracked (denote-sync--change-key file b)))
+        (denote-sync-frontmatter-set target "sync-fake-id" "remote-1")
+        (should-not (equal untracked (denote-sync--change-key file b)))))))
+
+(ert-deftest test-denote-sync/local-changed-p-compares-change-key ()
+  (let* ((file (test-denote-sync--change-key-note "Body text"))
+         (b (denote-sync-backend-create :name 'fake :frontmatter-prefix "fake"))
+         (key (denote-sync--change-key file b)))
+    (should-not (denote-sync--local-changed-p file b key))
+    (should (denote-sync--local-changed-p file b "stale"))
+    (should (denote-sync--local-changed-p file b ""))
+    ;; a pre-change-key SHA-1 reads as changed
+    (should (denote-sync--local-changed-p file b (secure-hash 'sha1 "Body text")))))

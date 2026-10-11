@@ -795,7 +795,7 @@ id's on-disk cache, via `denote-notion--record-synced-content' inside
                           (t (error "unexpected call in force path: %S" args))))))
               (denote-sync--export-update file (denote-sync-get-backend 'notion) t))
             (should (equal (denote-sync-frontmatter-get file "sync-notion-sync-hash")
-                           (format "%S" (denote-sync--content-hash "## Body\n\nBody content here."))))
+                           (format "%S" (denote-sync--change-key file (denote-sync-get-backend 'notion)))))
             (should (equal (denote-sync--cache-read 'notion id) "## Body\n\nBody content here.")))
         (delete-directory denote-sync-cache-directory t)))))
 
@@ -1150,20 +1150,7 @@ H1 duplicating the page's own title."
         (denote-sync--export-update file (denote-sync-get-backend 'notion) t))
       (should (equal edit-content "## Body\n\nBody content here.")))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; denote-sync--content-hash
-
-(ert-deftest test-denote-notion/content-hash-stable-for-same-input ()
-  "Hashing the same content twice returns the same hash."
-  (should (equal (denote-sync--content-hash "same content")
-                 (denote-sync--content-hash "same content"))))
-
-(ert-deftest test-denote-notion/content-hash-differs-for-different-input ()
-  "Hashing different content returns different hashes."
-  (should-not (equal (denote-sync--content-hash "content one")
-                     (denote-sync--content-hash "content two"))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-notion--cache-read / denote-notion--cache-write
 
 (ert-deftest test-denote-notion/cache-write-then-read-roundtrips ()
@@ -1201,7 +1188,7 @@ H1 duplicating the page's own title."
 (ert-deftest test-denote-notion/sync-state-unchanged ()
   "Neither side changed: local hash matches, remote not newer than stored."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (let ((local-hash (denote-sync--content-hash (car (denote-sync--export-body file (denote-sync-get-backend 'notion))))))
+    (let ((local-hash (denote-sync--change-key file (denote-sync-get-backend 'notion))))
       (denote-sync-frontmatter-set file "sync-notion-sync-hash" local-hash))
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (test-denote-notion--stub-remote-edited "2026-02-23T18:18:00.000Z")))
@@ -1218,7 +1205,7 @@ H1 duplicating the page's own title."
 (ert-deftest test-denote-notion/sync-state-remote-only ()
   "Local unchanged (stored hash current), remote newer than stored."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (let ((local-hash (denote-sync--content-hash (car (denote-sync--export-body file (denote-sync-get-backend 'notion))))))
+    (let ((local-hash (denote-sync--change-key file (denote-sync-get-backend 'notion))))
       (denote-sync-frontmatter-set file "sync-notion-sync-hash" local-hash))
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (test-denote-notion--stub-remote-edited "2026-03-01T00:00:00.000Z")))
@@ -1279,7 +1266,7 @@ independently on the async path."
   "When `denote-notion--sync-state' reports `unchanged', `ntn pages edit' is
 never invoked at all."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (let ((local-hash (denote-sync--content-hash (car (denote-sync--export-body file (denote-sync-get-backend 'notion))))))
+    (let ((local-hash (denote-sync--change-key file (denote-sync-get-backend 'notion))))
       (denote-sync-frontmatter-set file "sync-notion-sync-hash" local-hash))
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (lambda (args)
