@@ -256,3 +256,37 @@ Hello world body.
     (should (denote-sync--local-changed-p file b ""))
     ;; a pre-change-key SHA-1 reads as changed
     (should (denote-sync--local-changed-p file b (secure-hash 'sha1 "Body text")))))
+
+;;; Batched front matter
+
+(ert-deftest test-denote-sync/frontmatter-set-many-saves-once ()
+  (let* ((file (test-denote-sync--change-key-note "Body text"))
+         (saves 0))
+    (add-hook 'after-save-hook (lambda () (when (equal buffer-file-name file) (cl-incf saves))) nil nil)
+    (unwind-protect
+        (progn
+          (denote-sync-frontmatter-set-many
+           file '(("sync-fake-id" . "abc") ("sync-fake-edited" . "2026-10-11") ("sync-fake-sync-hash" . "h")))
+          (should (= saves 1))
+          (should (equal (denote-sync-frontmatter-get file "sync-fake-id") "abc"))
+          (should (equal (denote-sync-frontmatter-get file "sync-fake-edited") "2026-10-11"))
+          (should (equal (denote-sync-frontmatter-get file "sync-fake-sync-hash") "h"))
+          ;; no pairs, no visit, no save
+          (denote-sync-frontmatter-set-many file nil)
+          (should (= saves 1)))
+      (when-let* ((buf (find-buffer-visiting file))) (kill-buffer buf)))))
+
+(ert-deftest test-denote-sync/record-synced-content-writes-hash-edited-and-extras-in-one-save ()
+  (let* ((file (test-denote-sync--change-key-note "Body text"))
+         (b (denote-sync-backend-create :name 'fake :frontmatter-prefix "fake"))
+         (denote-sync-cache-directory (make-temp-file "dsync-cache-" t))
+         (calls 0))
+    (cl-letf* ((orig (symbol-function 'denote-sync-frontmatter-set-many))
+               ((symbol-function 'denote-sync-frontmatter-set-many)
+                (lambda (&rest args) (cl-incf calls) (apply orig args))))
+      (denote-sync--record-synced-content file b "r1" "body" "2026-10-11"
+                                          '(("sync-fake-id" . "r1")))
+      (should (= calls 1))
+      (should (equal (denote-sync--get-id file b) "r1"))
+      (should (equal (denote-sync--get-edited file b) "2026-10-11"))
+      (should (equal (denote-sync--get-sync-hash file b) (denote-sync--change-key file b))))))

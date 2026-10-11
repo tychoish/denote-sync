@@ -423,3 +423,54 @@
      (denote-sync-silo-export-tree "p")
      (should (equal (funcall tags) '(("only"))))
      (should (= 1 (length (denote-sync-silo-with-target tgt (denote-directory-files))))))))
+
+;;; Deferred rendering
+
+(ert-deftest test-denote-sync-silo/org-to-org-push-skips-markdown-export ()
+  (test-silo--with-silos
+   (let* ((file (test-silo--note src "20261011T100000" nil "alpha" "Some *bold* text" "org"))
+          (b (denote-sync-get-backend 'silo))
+          (exports 0))
+     (cl-letf* ((orig (symbol-function 'denote-sync--org-to-markdown))
+                ((symbol-function 'denote-sync--org-to-markdown)
+                 (lambda (&rest args) (cl-incf exports) (apply orig args))))
+       (denote-sync-push file (list :directory tgt :target-format 'org) nil b)
+       (should (= exports 0))
+       (let ((path (denote-sync-silo-with-target tgt
+                     (denote-get-path-by-id (denote-sync--get-id file b)))))
+         (should (string-suffix-p ".org" path))
+         (should (equal (denote-sync--body-without-front-matter path) "Some *bold* text")))
+       ;; a status check needs no export either
+       (should (eq (denote-sync--sync-state file b) 'unchanged))
+       (should (= exports 0))))))
+
+(ert-deftest test-denote-sync-silo/org-to-markdown-push-still-exports ()
+  (test-silo--with-silos
+   (let* ((file (test-silo--note src "20261011T100000" nil "alpha" "Some *bold* text" "org"))
+          (b (denote-sync-get-backend 'silo)))
+     (denote-sync-push file (list :directory tgt :target-format 'markdown-yaml) nil b)
+     (let ((path (denote-sync-silo-with-target tgt
+                   (denote-get-path-by-id (denote-sync--get-id file b)))))
+       (should (string-suffix-p ".md" path))
+       (should (string-match-p "\\*\\*bold\\*\\*\\|_bold_\\|\\*bold\\*"
+                               (denote-sync--body-without-front-matter path)))))))
+
+(ert-deftest test-denote-sync-silo/deferred-render-reports-dangling-links ()
+  (test-silo--with-silos
+   (let* ((file (test-silo--note src "20261011T100000" nil "alpha"
+                                 "See [[denote:20261011T999999][ghost]]" "org"))
+          (b (denote-sync-get-backend 'silo))
+          (result (denote-sync--export-body file b)))
+     (should (null (car result)))
+     (should (equal (mapcar (lambda (d) (list (nth 1 d) (nth 2 d))) (cdr result))
+                    '(("20261011T999999" missing-file)))))))
+
+(ert-deftest test-denote-sync-silo/deferred-record-drops-stale-cache ()
+  (let ((denote-sync-cache-directory (make-temp-file "dsync-cache-" t))
+        (file (make-temp-file "dsync-rec-" nil ".org"))
+        (b (denote-sync-get-backend 'silo)))
+    (with-temp-file file (insert "#+title: x\n#+identifier: 20261011T100000\n\nBody\n"))
+    (denote-sync--cache-write 'silo "id-1" "old markdown ancestor")
+    (denote-sync--record-synced-content file b "id-1" nil)
+    (should-not (denote-sync--cache-read 'silo "id-1"))
+    (should (equal (denote-sync--get-sync-hash file b) (denote-sync--change-key file b)))))

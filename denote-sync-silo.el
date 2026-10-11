@@ -30,6 +30,8 @@
 (require 'mdwn)
 
 (declare-function denote-sync--org-to-markdown "denote-sync")
+(declare-function denote-sync--export-markdown "denote-sync")
+(declare-function denote-sync--dangling-links "denote-sync")
 (defvar denote-silo-directories)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -194,9 +196,19 @@ Refuses to clobber a visiting buffer with unsaved edits."
 (defconst denote-sync-silo--denote-id-regexp "denote:\\([0-9]\\{8\\}T[0-9]\\{6\\}\\)"
   "Regexp matching a `denote:' identifier reference; group 1 is the id.")
 
-(defun denote-sync-silo--org-to-markdown (content _file)
-  "Return CONTENT unchanged: the engine already exports Org as Markdown."
-  content)
+(defun denote-sync-silo--render (file backend)
+  "Return (CONTENT . DANGLING) for pushing FILE to the silo.
+An Org source defers rendering: the target is usually Org and takes the raw
+body, so the Markdown export runs only when a Markdown target needs it.
+Other sources are already Markdown and render as the engine does."
+  (if (eq (denote-filetype-heuristics file) 'org)
+      (cons nil (denote-sync--dangling-links file backend))
+    (denote-sync--export-markdown file backend)))
+
+(defun denote-sync-silo--org-to-markdown (content file)
+  "Return CONTENT, or FILE's Markdown export when rendering was deferred."
+  (or content
+      (car (denote-sync--export-markdown file (denote-sync-get-backend 'silo)))))
 
 (defun denote-sync-silo--replace-denote-ids (text fn)
   "Replace each `denote:ID' in TEXT with `denote:' plus (FN ID) when non-nil."
@@ -814,7 +826,8 @@ push that fails are returned to the untracked state."
   :import-fn #'denote-sync-silo--import
   :read-parent-fn #'denote-sync-silo--read-parent
   :format-parent-fn #'denote-sync-silo--format-parent
-  :parse-parent-fn nil))
+  :parse-parent-fn nil
+  :render-fn #'denote-sync-silo--render))
 
 (provide 'denote-sync-silo)
 ;;; denote-sync-silo.el ends here
