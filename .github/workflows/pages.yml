@@ -28,10 +28,9 @@ jobs:
 
       - name: Build documentation site
         env:
-          GSC_VERIFICATION_HTML: ${{ secrets.GSC_VERIFICATION_HTML }}
-          GSC_VERIFICATION_TOKEN: ${{ secrets.GSC_VERIFICATION_TOKEN }}
+          GSC_VERIFICATION_CODE: ${{ secrets.GSC_VERIFICATION_CODE || secrets.GSC_VERIFICATION_TOKEN }}
         run: |
-          emacs -Q --batch -l scripts/build-pages.el
+          emacs --script scripts/build-pages.el
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

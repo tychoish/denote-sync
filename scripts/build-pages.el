@@ -2,10 +2,11 @@
 
 ;; Commentary:
 ;; Batch Elisp script to export docs/*.org files to HTML for GitHub Pages.
-;; Supports static asset copying and Google Search Console verification tokens.
+;; Supports static asset copying and Google Search Console verification
+;; via both HTML <meta> tag and HTML verification file.
 ;;
 ;; Usage:
-;;   emacs -Q --batch -l scripts/build-pages.el
+;;   emacs --script scripts/build-pages.el
 
 (require 'ox-html)
 
@@ -19,8 +20,11 @@
   (let* ((root-dir (or (locate-dominating-file default-directory "docs") default-directory))
          (docs-directory (expand-file-name (or docs-dir "docs") root-dir))
          (output-directory (expand-file-name (or site-dir "_site") root-dir))
-         (gsc-html (getenv "GSC_VERIFICATION_HTML"))
-         (gsc-token (getenv "GSC_VERIFICATION_TOKEN")))
+         ;; Extract verification code/token from environment
+         (gsc-token (or (getenv "GSC_VERIFICATION_CODE")
+                        (getenv "GSC_SITE_VERIFICATION")
+                        (getenv "GSC_VERIFICATION_TOKEN")))
+         (gsc-html (getenv "GSC_VERIFICATION_HTML")))
     
     (unless (file-directory-p docs-directory)
       (error "Docs directory does not exist: %s" docs-directory))
@@ -29,6 +33,13 @@
     (message "Building documentation site:")
     (message "  Source: %s" docs-directory)
     (message "  Target: %s" output-directory)
+
+    ;; If verification token is present, configure HTML <meta> tag injection
+    (when (and gsc-token (not (string-empty-p gsc-token)))
+      (setq org-html-head-extra
+            (concat (or org-html-head-extra "")
+                    (format "<meta name=\"google-site-verification\" content=\"%s\" />\n" gsc-token)))
+      (message "  [gsc] Injected <meta name=\"google-site-verification\"> tag"))
 
     ;; 1. Export each Org file to HTML
     (let ((org-files (directory-files docs-directory t "\\.org\\'")))
@@ -49,15 +60,17 @@
           (copy-file asset dest t)
           (message "  [asset] %s" (file-name-nondirectory asset)))))
 
-    ;; 3. Google Search Console HTML verification file from environment
-    (when (and gsc-html (not (string-empty-p gsc-html)))
-      (let ((verify-file (expand-file-name
-                          (format "google%s.html" (or gsc-token ""))
-                          output-directory)))
+    ;; 3. Google Search Console HTML verification file
+    ;; Automatically synthesize file content from token, or use explicit body
+    (when (and gsc-token (not (string-empty-p gsc-token)))
+      (let* ((filename (if (string-prefix-p "google" gsc-token)
+                           (format "%s.html" gsc-token)
+                         (format "google%s.html" gsc-token)))
+             (verify-file (expand-file-name filename output-directory))
+             (content (or gsc-html (format "google-site-verification: %s\n" filename))))
         (with-temp-file verify-file
-          (insert gsc-html))
-        (message "  [gsc] Generated %s from GSC_VERIFICATION_HTML"
-                 (file-name-nondirectory verify-file))))
+          (insert content))
+        (message "  [gsc] Emitted %s" filename)))
 
     ;; 4. Copy any static google*.html verification file if checked into docs/
     (let ((gsc-files (directory-files docs-directory t "\\`google.*\\.html\\'")))
@@ -68,7 +81,7 @@
 
     (message "Build complete. Artifacts written to %s" output-directory)))
 
-;; Execute automatically when run in batch mode:
+;; Execute automatically in batch mode:
 (when noninteractive
   (build-pages-export-all))
 
