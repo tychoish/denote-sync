@@ -28,7 +28,8 @@ jobs:
 
       - name: Build documentation site
         env:
-          GSC_VERIFICATION_CODE: ${{ secrets.GSC_VERIFICATION_CODE || secrets.GSC_VERIFICATION_TOKEN }}
+          GSC_VERIFICATION_TAG: ${{ secrets.GSC_VERIFICATION_TAG || secrets.GSC_VERIFICATION_CODE }}
+          GSC_VERIFICATION_FILE: ${{ secrets.GSC_VERIFICATION_FILE || secrets.GSC_VERIFICATION_TOKEN }}
         run: |
           emacs --script scripts/build-pages.el
 
