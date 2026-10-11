@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # record-copilot.sh - Semi-Automated Co-Pilot Desktop Video Recorder
-# Orchestrates window switching, browser URLs, and Emacs commands with Dunst
-# on-screen HUD notifications and segment-based pause/unpause recording.
+# Demonstrates the end-to-end user OAuth flow for denote-sync:
+# 1. Emacs setup & authorization initiation
+# 2. Google OAuth 2.0 consent screen (showing client_id in URL)
+# 3. Note synchronization in Emacs & Google Docs
+# 4. Account permission revocation (myaccount.google.com/permissions)
 # ==============================================================================
 set -euo pipefail
 
@@ -119,7 +122,7 @@ prompt_action_paused() {
     stop_segment
     
     # 2. Fire Dunst notification
-    notify_hud "[PAUSED] $title" "$instructions\n\n👉 Press ENTER in terminal or click to resume recording." "critical" 0
+    notify_hud "[PAUSED] $title" "$instructions\n\n👉 Press ENTER in terminal to resume recording." "critical" 0
     
     echo ""
     echo "================================================================================"
@@ -151,7 +154,7 @@ SCREEN_RES=$(xdpyinfo -display "$DISPLAY_TARGET" 2>/dev/null | awk '/dimensions:
 SCREEN_RES="${SCREEN_RES:-1920x1200}"
 
 echo "================================================================================"
-echo "    denote-sync Co-Pilot Verification Video Recorder"
+echo "    denote-sync OAuth Verification Video Recorder"
 echo "================================================================================"
 echo "Output file:        $OUTPUT_FILE"
 echo "Display:            $DISPLAY_TARGET"
@@ -161,38 +164,26 @@ echo ""
 echo "NOTE: Ensure ONLY '$USER_ACCOUNT' is selected during Google authorization."
 echo "      Do NOT select or display tychoish@gmail.com."
 echo "--------------------------------------------------------------------------------"
-echo "Features:"
-echo "  - Dunst HUD on-screen notifications guide you through each step."
-echo "  - Recording automatically PAUSES during human actions (take your time!)."
-echo "  - Chrome URLs change automatically via xdotool."
+echo "Workflow Steps (Authentic User Flow):"
+echo "  1. Emacs: Setup wizard initiation & scope minimization (--drive-scope=file)"
+echo "  2. Browser: OAuth 2.0 consent screen (client_id visible in URL) & Allow"
+echo "  3. Emacs & Docs: Note synchronization demonstration"
+echo "  4. Browser: Account permissions revocation (myaccount.google.com/permissions)"
 echo "================================================================================"
 echo ""
 read -r -p "Ready? Press [ENTER] to start recording... "
 
-notify_hud "denote-sync Verification" "Recording started. 5-step verification workflow." "normal" 4000
+notify_hud "denote-sync Verification" "Recording started. 4-step user verification flow." "normal" 4000
 
 # ------------------------------------------------------------------------------
-# STEP 1: Google Cloud Console Credentials (15s)
+# STEP 1: Emacs Setup Wizard Initiation (15s)
 # ------------------------------------------------------------------------------
 echo ""
 echo "================================================================================"
-echo " [Step 1/5] Google Cloud Console Credentials"
+echo " [Step 1/4] Emacs Setup Wizard & Authorization Initiation"
 echo "================================================================================"
 start_segment
-notify_hud "Step 1/5: Cloud Console Credentials" "Displaying OAuth 2.0 Client ID Credentials page (15s)" "normal" 14000
-navigate_chrome "https://console.cloud.google.com/apis/credentials"
-sleep 15
-stop_segment
-
-# ------------------------------------------------------------------------------
-# STEP 2: Emacs Authorization Initiation (15s)
-# ------------------------------------------------------------------------------
-echo ""
-echo "================================================================================"
-echo " [Step 2/5] Emacs Authorization Initiation"
-echo "================================================================================"
-start_segment
-notify_hud "Step 2/5: Emacs Authorization" "Displaying denote-sync bootstrap & scope minimization (15s)" "normal" 14000
+notify_hud "Step 1/4: Emacs Setup Wizard" "Displaying denote-sync bootstrap & scope minimization (15s)" "normal" 14000
 focus_emacs "*denote-sync-bootstrap*" "
   (with-current-buffer (get-buffer-create \"*denote-sync-bootstrap*\")
     (erase-buffer)
@@ -206,31 +197,31 @@ sleep 15
 stop_segment
 
 # ------------------------------------------------------------------------------
-# STEP 3: Google OAuth Consent Screen & Client ID Inspection
+# STEP 2: Google OAuth Consent Screen & Client ID Inspection
 # ------------------------------------------------------------------------------
 echo ""
 echo "================================================================================"
-echo " [Step 3/5] OAuth Consent Screen & Client ID Inspection"
+echo " [Step 2/4] OAuth Consent Screen & Client ID Inspection"
 echo "================================================================================"
 navigate_chrome "https://accounts.google.com/o/oauth2/v2/auth?client_id=988718620220-ak9h89ru1uuat23s5rc239momds6ke96.apps.googleusercontent.com&redirect_uri=http%3A%2F%2F127.0.0.1%3A8085&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdocuments+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&access_type=offline"
 
 prompt_action_paused "OAuth Consent Actions" \
   "1. Select $USER_ACCOUNT (NOT tychoish@gmail.com)\n2. Highlight URL bar showing client_id=988718620220...\n3. Review permissions and click [Allow]"
 
-# Record 15 seconds of the post-consent / consent inspection state
-notify_hud "Step 3/5: OAuth Consent" "Recording consent confirmation (15s)..." "normal" 14000
+# Record 15 seconds of the consent confirmation state
+notify_hud "Step 2/4: OAuth Consent" "Recording consent confirmation (15s)..." "normal" 14000
 sleep 15
 stop_segment
 
 # ------------------------------------------------------------------------------
-# STEP 4: Note Synchronization (20s total: 10s Emacs + 10s Docs)
+# STEP 3: Note Synchronization (20s total: 10s Emacs + 10s Docs)
 # ------------------------------------------------------------------------------
 echo ""
 echo "================================================================================"
-echo " [Step 4/5] Note Synchronization in Emacs & Google Docs"
+echo " [Step 3/4] Note Synchronization in Emacs & Google Docs"
 echo "================================================================================"
 start_segment
-notify_hud "Step 4/5: Note Synchronization" "Showing local Denote note (#+sync_gdoc_account: $USER_ACCOUNT)" "normal" 9000
+notify_hud "Step 3/4: Note Synchronization" "Showing local Denote note (#+sync_gdoc_account: $USER_ACCOUNT)" "normal" 9000
 focus_emacs "*denote-sync-demo*" "
   (with-current-buffer (get-buffer-create \"*denote-sync-demo*\")
     (org-mode)
@@ -244,17 +235,17 @@ focus_emacs "*denote-sync-demo*" "
     (insert \"[✓] denote-sync-push: successfully exported note!\n\"))"
 sleep 10
 
-notify_hud "Step 4/5: Google Docs Interface" "Showing synced note in Google Docs browser (10s)" "normal" 9000
+notify_hud "Step 3/4: Google Docs Interface" "Showing synced note in Google Docs browser (10s)" "normal" 9000
 navigate_chrome "https://docs.google.com"
 sleep 10
 stop_segment
 
 # ------------------------------------------------------------------------------
-# STEP 5: Permission Revocation
+# STEP 4: Account Permission Revocation
 # ------------------------------------------------------------------------------
 echo ""
 echo "================================================================================"
-echo " [Step 5/5] Account Permission Revocation"
+echo " [Step 4/4] Account Permission Revocation"
 echo "================================================================================"
 navigate_chrome "https://myaccount.google.com/permissions"
 
@@ -262,7 +253,7 @@ prompt_action_paused "Revoke Permissions Action" \
   "In Chrome (signed in as $USER_ACCOUNT):\n1. Locate 'denote-sync' under Third-party apps\n2. Click [Remove Access] to show immediate revocability"
 
 # Record 10 seconds of the revoked state
-notify_hud "Step 5/5: Revocation" "Recording revoked permission state (10s)..." "normal" 9000
+notify_hud "Step 4/4: Revocation" "Recording revoked permission state (10s)..." "normal" 9000
 sleep 10
 stop_segment
 
