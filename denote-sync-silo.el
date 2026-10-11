@@ -13,8 +13,8 @@
 ;; (org <-> markdown), `denote-sequence' signature remapping, and
 ;; whole-tree export with intra-tree `denote:' link rewriting.
 ;;
-;; Source notes track their target with `silo_id', `silo_dir',
-;; `silo_sync_hash', `silo_edited' and `silo_conflict' front matter.
+;; Source notes track their target with `sync-silo-id', `sync-silo-dir',
+;; `sync-silo-sync-hash' and `sync-silo-edited' front matter.
 ;; Target-side operations run with `denote-directory' dynamically bound to
 ;; the target silo (see `denote-sync-silo-with-target').
 
@@ -41,7 +41,7 @@
   :prefix "denote-sync-silo-")
 
 (defcustom denote-sync-silo-default-directory nil
-  "Target silo directory used when a note carries no `silo_dir'."
+  "Target silo directory used when a note carries no `sync-silo-dir'."
   :type '(choice (const nil) directory)
   :group 'denote-sync-silo)
 
@@ -108,7 +108,7 @@ target identifier and signature of each note in the tree.")
   "Return the target directory for remote ID."
   (or denote-sync-silo--directory
       (when-let* ((file (denote-sync--find-tracked-file id 'silo)))
-        (denote-sync-silo--strip-quotes (denote-sync-frontmatter-get file "silo_dir")))
+        (denote-sync-silo--strip-quotes (denote-sync-frontmatter-get file (denote-sync--prop-key "silo" "dir"))))
       denote-sync-silo-default-directory
       (user-error "No silo directory known for note %s" id)))
 
@@ -203,8 +203,11 @@ Refuses to clobber a visiting buffer with unsaved edits."
   (replace-regexp-in-string
    denote-sync-silo--denote-id-regexp
    (lambda (m)
-     (let ((new (funcall fn (progn (string-match denote-sync-silo--denote-id-regexp m)
-                                   (match-string 1 m)))))
+     ;; FN does its own matching (path lookups); keep it from clobbering the
+     ;; match data `replace-regexp-in-string' replaces with afterwards.
+     (let ((new (save-match-data
+                  (funcall fn (progn (string-match denote-sync-silo--denote-id-regexp m)
+                                     (match-string 1 m))))))
        (if new (concat "denote:" new) m)))
    text t t))
 
@@ -399,18 +402,18 @@ Return the target path."
          (body (denote-sync-silo--target-body
                 file content type (eq (plist-get parent :rewrite-links) 'none)))
          (path (denote-sync-silo--write-note dir id signature file type body)))
-    (denote-sync-frontmatter-set file "silo_dir" (expand-file-name dir))
+    (denote-sync-frontmatter-set file (denote-sync--prop-key "silo" "dir") (expand-file-name dir))
     (denote-sync-silo--result id path)))
 
 (defun denote-sync-silo--update (file id content _force)
   "Update (or, when planned, create) target note ID for FILE with CONTENT."
-  (let* ((dir (or (denote-sync-silo--strip-quotes (denote-sync-frontmatter-get file "silo_dir"))
+  (let* ((dir (or (denote-sync-silo--strip-quotes (denote-sync-frontmatter-get file (denote-sync--prop-key "silo" "dir")))
                   (denote-sync-silo--directory-for-id id)))
          (planned (and denote-sync-silo--plan
                        (gethash (denote-retrieve-filename-identifier file) denote-sync-silo--plan)))
          (existing (denote-sync-silo-with-target dir (denote-get-path-by-id id))))
     (unless (or existing planned)
-      (user-error "Target note %s not found in %s; clear silo_id to re-create it" id dir))
+      (user-error "Target note %s not found in %s; clear sync-silo-id to re-create it" id dir))
     (let* ((type (cond
                   (planned (denote-sync-silo--resolve-type file (plist-get planned :format)))
                   (existing (denote-filetype-heuristics existing))))
@@ -488,8 +491,8 @@ The target's signature is kept unless the source directory already uses it."
                               nil nil nil signature))
              (new-file (if (stringp created) created (buffer-file-name))))
         (denote-sync--write-body new-file (denote-sync-silo--reverse-links body))
-        (denote-sync-frontmatter-set new-file "silo_id" id)
-        (denote-sync-frontmatter-set new-file "silo_dir" (expand-file-name dir))
+        (denote-sync-frontmatter-set new-file (denote-sync--prop-key "silo" "id") id)
+        (denote-sync-frontmatter-set new-file (denote-sync--prop-key "silo" "dir") (expand-file-name dir))
         (denote-sync--record-synced-content
          new-file backend id (car (denote-sync--export-body new-file backend))
          (denote-sync-silo--mtime path))
@@ -539,8 +542,8 @@ The target's signature is kept unless the source directory already uses it."
   "Prompt for a silo directory and target format; return a parent plist."
   (let* ((dirs (denote-sync-silo--candidate-directories))
          (dir (annotated-completing-read
-               "Silo directory: " dirs
-               :annotation-function (lambda (d) (if (file-directory-p d) "" " [new]"))))
+               (mapcar (lambda (d) (cons d (unless (file-directory-p d) "[new]"))) dirs)
+               :prompt "Silo directory: "))
          (fmt (completing-read "Target format: "
                                '("same" "org" "markdown-yaml" "markdown-toml" "text")
                                nil t nil nil "same")))
@@ -589,7 +592,7 @@ REWRITE-LINKS (default t) rewrites links to exported notes."
                            (when-let* ((tid (denote-sync--get-id f (denote-sync-get-backend 'silo))))
                              (denote-sync-silo-with-target dir (denote-get-path-by-id tid))))
                          (cdr files)))
-      (user-error "Root note of tree %s is missing from %s but descendants exist; restore it or clear silo_id"
+      (user-error "Root note of tree %s is missing from %s but descendants exist; restore it or clear sync-silo-id"
                   (plist-get rule :source-prefix) dir))
     (cond
      ((plist-get rule :target-prefix))
@@ -704,11 +707,11 @@ check runs before anything is written, and source notes seeded for a
 push that fails are returned to the untracked state."
   (interactive
    (list (annotated-completing-read
-          "Tree rule: " (mapcar (lambda (r) (plist-get r :name)) denote-sync-silo-rules)
-          :annotation-function
-          (lambda (n) (format " [%s -> %s]"
-                              (plist-get (denote-sync-silo--find-rule n) :source-prefix)
-                              (plist-get (denote-sync-silo--find-rule n) :directory))))))
+          (mapcar (lambda (r) (cons (plist-get r :name)
+                                    (format "[%s -> %s]" (plist-get r :source-prefix)
+                                            (plist-get r :directory))))
+                  denote-sync-silo-rules)
+          :prompt "Tree rule: ")))
   (let* ((rule (denote-sync-silo--find-rule rule-name))
          (dir (plist-get rule :directory))
          (plan (denote-sync-silo--plan-tree rule))
@@ -723,8 +726,8 @@ push that fails are returned to the untracked state."
             (puthash (denote-retrieve-filename-identifier file) entry table)
             (unless (denote-sync--get-id file backend)
               (push file seeded)
-              (denote-sync-frontmatter-set file "silo_id" (plist-get entry :id)))
-            (denote-sync-frontmatter-set file "silo_dir" dir))
+              (denote-sync-frontmatter-set file (denote-sync--prop-key "silo" "id") (plist-get entry :id)))
+            (denote-sync-frontmatter-set file (denote-sync--prop-key "silo" "dir") dir))
           (let ((denote-sync-silo--plan table))
             (dolist (item plan)
               ;; an unchanged body skips the engine's update, so moves are forced,
@@ -737,8 +740,8 @@ push that fails are returned to the untracked state."
               (push (car item) done))))
       (error
        (dolist (file (seq-difference seeded done))
-         (denote-sync-frontmatter-set file "silo_id" "")
-         (denote-sync-frontmatter-set file "silo_dir" ""))
+         (denote-sync-frontmatter-set file (denote-sync--prop-key "silo" "id") "")
+         (denote-sync-frontmatter-set file (denote-sync--prop-key "silo" "dir") ""))
        (signal (car err) (cdr err))))
     (message "Exported %d note(s) to %s" (length plan) dir)
     (mapcar (lambda (item) (cons (car item) (plist-get (cdr item) :id))) plan)))

@@ -32,10 +32,10 @@ date:       2026-01-05T17:52:00-05:00
 tags:       [\"casap\", \"notion\"]
 identifier: \"20260105T175200\"
 signature:  \"2a8a\"
-notion_tags:    [\"engineering\", \"observation\"]
-notion_id:      \"2f094bf7-31a4-8081-8280-f0a225af4db2\"
-notion_created: \"2026-01-22T19:54:00.000Z\"
-notion_edited:  \"2026-02-23T18:18:00.000Z\"
+sync-notion-tags:    [\"engineering\", \"observation\"]
+sync-notion-id:      \"2f094bf7-31a4-8081-8280-f0a225af4db2\"
+sync-notion-created: \"2026-01-22T19:54:00.000Z\"
+sync-notion-edited:  \"2026-02-23T18:18:00.000Z\"
 source_url:     \"https://app.notion.com/p/example\"
 ---
 
@@ -65,7 +65,7 @@ date:       2026-01-05T17:52:00-05:00
 tags:       [\"casap\"]
 identifier: \"20260105T175201\"
 signature:  \"2a8b\"
-notion_properties: {\"Timestamp\": {\"date\": {\"start\": \"2020-01-01\"}}}
+sync-notion-properties: {\"Timestamp\": {\"date\": {\"start\": \"2020-01-01\"}}}
 ---
 
 ## Body
@@ -130,13 +130,13 @@ cache directory just because a test happened to exercise that path."
 (ert-deftest test-denote-notion/frontmatter-get-existing-key ()
   "Reads an existing front-matter key's value verbatim."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (should (equal (denote-sync-frontmatter-get file "notion_id")
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-id")
                    "\"2f094bf7-31a4-8081-8280-f0a225af4db2\""))))
 
 (ert-deftest test-denote-notion/frontmatter-get-missing-key ()
   "Returns nil for a key that is not present."
   (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
-    (should (null (denote-sync-frontmatter-get file "notion_id")))))
+    (should (null (denote-sync-frontmatter-get file "sync-notion-id")))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-sync-frontmatter-set
@@ -144,58 +144,59 @@ cache directory just because a test happened to exercise that path."
 (ert-deftest test-denote-notion/frontmatter-set-replaces-existing ()
   "Replaces an existing key's value in place."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_edited" "2026-03-01T00:00:00.000Z")
-    (should (equal (denote-sync-frontmatter-get file "notion_edited")
+    (denote-sync-frontmatter-set file "sync-notion-edited" "2026-03-01T00:00:00.000Z")
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-edited")
                    "\"2026-03-01T00:00:00.000Z\""))))
 
 (ert-deftest test-denote-notion/frontmatter-set-appends-missing ()
   "Appends a new key when it is not already present."
   (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
-    (denote-sync-frontmatter-set file "notion_id" "new-page-id")
-    (should (equal (denote-sync-frontmatter-get file "notion_id") "\"new-page-id\""))))
+    (denote-sync-frontmatter-set file "sync-notion-id" "new-page-id")
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-id") "\"new-page-id\""))))
 
 (ert-deftest test-denote-notion/frontmatter-set-formats-list-as-array ()
   "A list value is written as a JSON-array-like bracketed, quoted list."
   (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
-    (denote-sync-frontmatter-set file "notion_tags" '("design" "architecture"))
-    (should (equal (denote-sync-frontmatter-get file "notion_tags")
+    (denote-sync-frontmatter-set file "sync-notion-tags" '("design" "architecture"))
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-tags")
                    "[\"design\", \"architecture\"]"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-notion--tracked-p
 
 (ert-deftest test-denote-notion/tracked-p-true ()
-  "A note with a non-empty notion_id is tracked."
+  "A note with a non-empty sync-notion-id is tracked."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (should (denote-notion--tracked-p file))))
 
 (ert-deftest test-denote-notion/tracked-p-false ()
-  "A note with no notion_id is not tracked."
+  "A note with no sync-notion-id is not tracked."
   (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
     (should-not (denote-notion--tracked-p file))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-notion--conflicted-p
 
-(ert-deftest test-denote-notion/conflicted-p-true ()
-  "A note with notion_conflict set to t is conflicted."
-  (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_conflict" t)
-    (should (denote-notion--conflicted-p file))))
+;; Conflict state is derived from the stored hash/edited time via
+;; `denote-sync--sync-state', never from a stored flag.
 
-(ert-deftest test-denote-notion/conflicted-p-false-absent ()
-  "A note with no notion_conflict line is not conflicted."
+(ert-deftest test-denote-notion/conflicted-p-true-when-both-changed ()
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (should-not (denote-notion--conflicted-p file))))
+    (cl-letf (((symbol-function 'denote-sync--sync-state) (lambda (&rest _) 'both-changed)))
+      (should (denote-notion--conflicted-p file)))))
 
-(ert-deftest test-denote-notion/conflicted-p-false-cleared ()
-  "A note whose notion_conflict was cleared to the empty string is not
-conflicted -- `denote-notion--finish-conflict-resolution's clearing
-convention."
+(ert-deftest test-denote-notion/conflicted-p-false-when-one-side-changed ()
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_conflict" t)
-    (denote-sync-frontmatter-set file "notion_conflict" "")
-    (should-not (denote-notion--conflicted-p file))))
+    (dolist (state '(unchanged local-only remote-only))
+      (cl-letf (((symbol-function 'denote-sync--sync-state) (lambda (&rest _) state)))
+        (should-not (denote-notion--conflicted-p file))))))
+
+(ert-deftest test-denote-notion/conflicted-p-ignores-a-stale-stored-flag ()
+  "A leftover `sync-notion-conflict: t' line does not make a note conflicted."
+  (test-denote-notion--with-fixture test-denote-notion--md-fixture
+    (denote-sync-frontmatter-set file "sync-notion-conflict" t)
+    (cl-letf (((symbol-function 'denote-sync--sync-state) (lambda (&rest _) 'unchanged)))
+      (should-not (denote-notion--conflicted-p file)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-sync--body-without-front-matter
@@ -226,6 +227,19 @@ which Notion's importer does not read back as a table."
   (let ((md (denote-sync--org-to-markdown "| a | b |\n|---+---|\n| 1 | 2 |\n")))
     (should (string-match-p (regexp-quote "| a | b |") md))
     (should-not (string-match-p "<table" md))))
+
+(defvar test-denote-sync--babel-ran nil)
+
+(ert-deftest test-denote-sync/org-to-markdown-never-evaluates-src-blocks ()
+  "Exporting must not execute `#+begin_src' blocks, even with confirmation off."
+  (let ((test-denote-sync--babel-ran nil)
+        (org-confirm-babel-evaluate nil)
+        (org-babel-load-languages '((emacs-lisp . t))))
+    (let ((md (denote-sync--org-to-markdown
+               "#+begin_src emacs-lisp :exports both\n(setq test-denote-sync--babel-ran t)\n#+end_src\n")))
+      (should-not test-denote-sync--babel-ran)
+      (should (string-match-p "setq test-denote-sync--babel-ran" md))
+      (should-not (string-match-p "RESULTS" md)))))
 
 (ert-deftest test-denote-notion/org-to-markdown-src-block-exports-as-fenced-code ()
   "An Org src block exports to a fenced \"```\" code block, not a
@@ -267,7 +281,7 @@ identical intermediate `[desc](denote:ID)' form."
 
 (ert-deftest test-denote-notion/rewrite-denote-links-tracked-target ()
   "A `denote:' link to a tracked target is rewritten to a notion.so URL,
-using the target's own notion_id (dashes stripped), and no dangling
+using the target's own sync-notion-id (dashes stripped), and no dangling
 entry is recorded."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (cl-letf (((symbol-function 'denote-get-path-by-id)
@@ -370,7 +384,7 @@ instead of falling back to plain text."
                  (lambda (_id target-file)
                    ;; Simulate a successful recursive push: the target
                    ;; becomes tracked as a side effect.
-                   (denote-sync-frontmatter-set target-file "notion_id" "pushed-page-id")
+                   (denote-sync-frontmatter-set target-file "sync-notion-id" "pushed-page-id")
                    t)))
         (let* ((body "See [Untracked Note](denote:20260105T175201) for context.")
                (result (denote-sync--rewrite-denote-links body "/src/source.md" (denote-sync-get-backend 'notion))))
@@ -674,13 +688,13 @@ and writes them correctly, and does not write `source_url'."
                  (json-parse-string test-denote-notion--create-response-json
                                     :object-type 'alist :array-type 'list))))
       (denote-sync--export-create file (denote-sync-get-backend 'notion) '(database . "db-id")))
-    (should (equal (denote-sync-frontmatter-get file "notion_id") "\"new-page-id\""))
-    (should (equal (denote-sync-frontmatter-get file "notion_created") "\"2026-03-01T00:00:00.000Z\""))
-    (should (equal (denote-sync-frontmatter-get file "notion_edited") "\"2026-03-01T00:00:00.000Z\""))
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-id") "\"new-page-id\""))
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-created") "\"2026-03-01T00:00:00.000Z\""))
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-edited") "\"2026-03-01T00:00:00.000Z\""))
     (should-not (denote-sync-frontmatter-get file "source_url"))))
 
 (ert-deftest test-denote-notion/export-create-parent-stores-locator-not-registry-name ()
-  "notion_parent stores the parent's type:id locator, not a registry
+  "sync-notion-parent stores the parent's type:id locator, not a registry
 entry's display name -- so renaming or removing that registry entry
 later can't bitrot an already-created note's record of its own parent."
   (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
@@ -690,7 +704,7 @@ later can't bitrot an already-created note's record of its own parent."
                    (json-parse-string test-denote-notion--create-response-json
                                       :object-type 'alist :array-type 'list))))
         (denote-sync--export-create file (denote-sync-get-backend 'notion) '(database . "db-id"))))
-    (should (equal (denote-sync-frontmatter-get file "notion_parent") "\"database:db-id\""))))
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-parent") "\"database:db-id\""))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-notion--export-update
@@ -726,15 +740,15 @@ need stubbing here."
                   (t (error "unexpected call in force path: %S" args))))))
       (should (equal (denote-sync--export-update file (denote-sync-get-backend 'notion) t)
                      (cons "https://app.notion.com/p/tracked" nil))))
-    (should (equal (denote-sync-frontmatter-get file "notion_edited")
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-edited")
                    "\"2026-04-01T00:00:00.000Z\""))))
 
 (ert-deftest test-denote-notion/export-update-resolves-properties-by-parent-locator-not-name ()
-  "Default properties are found by looking the stored `notion_parent'
+  "Default properties are found by looking the stored `sync-notion-parent'
 locator (type:id) back up in the registry, so they still resolve even
 after the registry entry's display name has been renamed."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_parent" "database:db-id")
+    (denote-sync-frontmatter-set file "sync-notion-parent" "database:db-id")
     (let ((denote-sync-parent-registry
            '(("Renamed Database" . ((database . "db-id") . ((Status . "Synced")))))))
       (cl-letf (((symbol-function 'denote-sync-notion--run-json)
@@ -749,7 +763,7 @@ after the registry entry's display name has been renamed."
                     ((member "api" args) nil)
                     (t (error "unexpected call: %S" args))))))
         (denote-sync--export-update file (denote-sync-get-backend 'notion) t)))
-    (should (equal (denote-sync-frontmatter-get file "notion_edited")
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-edited")
                    "\"2026-04-01T00:00:00.000Z\""))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -761,7 +775,7 @@ after the registry entry's display name has been renamed."
 
 (ert-deftest test-denote-notion/export-update-force-records-synced-content-hash-and-cache ()
   "A FORCE push through `denote-notion--export-update' records the pushed
-content's hash as `notion_sync_hash' and writes that same content to the
+content's hash as `sync-notion-sync-hash' and writes that same content to the
 id's on-disk cache, via `denote-notion--record-synced-content' inside
 `denote-notion--export-apply-pushed-page'."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
@@ -780,7 +794,7 @@ id's on-disk cache, via `denote-notion--record-synced-content' inside
                                               :object-type 'alist :array-type 'list))
                           (t (error "unexpected call in force path: %S" args))))))
               (denote-sync--export-update file (denote-sync-get-backend 'notion) t))
-            (should (equal (denote-sync-frontmatter-get file "notion_sync_hash")
+            (should (equal (denote-sync-frontmatter-get file "sync-notion-sync-hash")
                            (format "%S" (denote-sync--content-hash "## Body\n\nBody content here."))))
             (should (equal (denote-sync--cache-read 'notion id) "## Body\n\nBody content here.")))
         (delete-directory denote-sync-cache-directory t)))))
@@ -801,7 +815,7 @@ the property-value structure."
 ;;
 ;; A newly created page's schema often expects a `Timestamp' date property
 ;; to be populated even when no registry entry or per-file
-;; `notion_properties' sets it explicitly -- see
+;; `sync-notion-properties' sets it explicitly -- see
 ;; `denote-sync-notion--default-export-properties'.
 
 (ert-deftest test-denote-notion/export-create-applies-default-timestamp ()
@@ -826,7 +840,7 @@ the property-value structure."
       (should-not (string-match-p "<today>" patched-data)))))
 
 (ert-deftest test-denote-notion/export-create-file-properties-override-default-timestamp ()
-  "A file's own `notion_properties' Timestamp value takes precedence over
+  "A file's own `sync-notion-properties' Timestamp value takes precedence over
 the built-in default."
   (test-denote-notion--with-fixture test-denote-notion--untracked-with-properties-fixture
     (let (patched-data)
@@ -953,7 +967,7 @@ rich_text array), backdates the note's identifier/date to the page's
         (should (string-prefix-p
                  (format-time-string "%Y%m%d" (date-to-time "2020-05-04T10:00:00.000Z"))
                  (file-name-nondirectory file)))
-        (should (equal (denote-sync-frontmatter-get file "notion_id") "\"page-id\""))
+        (should (equal (denote-sync-frontmatter-get file "sync-notion-id") "\"page-id\""))
         (with-temp-buffer
           (insert-file-contents file)
           (should (string-match-p "one\ntwo" (buffer-string)))
@@ -964,14 +978,14 @@ rich_text array), backdates the note's identifier/date to the page's
 ;; denote-sync-pull: dwim refresh with no page id
 
 (ert-deftest test-denote-notion/import-page-nil-id-refreshes-tracked-target-file ()
-  "With no PAGE-ID, TARGET-FILE's own tracked notion_id is re-pulled."
+  "With no PAGE-ID, TARGET-FILE's own tracked sync-notion-id is re-pulled."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (lambda (&rest _)
                  (json-parse-string test-denote-notion--get-page-response-json
                                     :object-type 'alist :array-type 'list))))
       (denote-sync-pull nil file))
-    (should (equal (denote-sync-frontmatter-get file "notion_edited")
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-edited")
                    "\"2020-05-04T11:00:00.000Z\""))
     (with-temp-buffer
       (insert-file-contents file)
@@ -987,25 +1001,25 @@ doing nothing or trying to guess a page to pull."
 ;; denote-sync-notion--refresh-file: metadata sync
 
 (ert-deftest test-denote-notion/import-refresh-syncs-notion-tags ()
-  "A refresh updates `notion_tags' from the page's current Tags property,
-not just the body and `notion_edited' -- the fixture starts with two
+  "A refresh updates `sync-notion-tags' from the page's current Tags property,
+not just the body and `sync-notion-edited' -- the fixture starts with two
 stale tags; the fetched page now has only one."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (should (equal (denote-sync-frontmatter-get file "notion_tags")
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-tags")
                    "[\"engineering\", \"observation\"]"))
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (lambda (&rest _)
                  (json-parse-string test-denote-notion--get-page-response-json
                                     :object-type 'alist :array-type 'list))))
       (denote-sync-pull nil file))
-    (should (equal (denote-sync-frontmatter-get file "notion_tags")
+    (should (equal (denote-sync-frontmatter-get file "sync-notion-tags")
                    "[\"engineering\"]"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-sync--find-tracked-file / directory-wide dedup on import
 
 (ert-deftest test-denote-notion/find-tracked-file-locates-match-anywhere ()
-  "Finds the tracking file by notion_id across the whole denote directory,
+  "Finds the tracking file by sync-notion-id across the whole denote directory,
 not just the current buffer."
   (test-denote-notion--with-temp-denote-dir dir
     (let ((denote-directory (list dir)))
@@ -1031,7 +1045,7 @@ instead of creating a duplicate."
                                       :object-type 'alist :array-type 'list))))
         (denote-sync-pull "page-id"))
       (should (equal (length (directory-files dir nil "\\.md\\'")) 1))
-      (should (equal (denote-sync-frontmatter-get tracked "notion_edited")
+      (should (equal (denote-sync-frontmatter-get tracked "sync-notion-edited")
                      "\"2020-05-04T11:00:00.000Z\"")))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1177,7 +1191,7 @@ H1 duplicating the page's own title."
 ;; other string to simulate "local changed".  The remote side is stubbed
 ;; via `denote-sync-notion--run-json' to return a page with a controllable
 ;; `last_edited_time', compared against the fixture's own stored
-;; `notion_edited' ("2026-02-23T18:18:00.000Z").
+;; `sync-notion-edited' ("2026-02-23T18:18:00.000Z").
 
 (defun test-denote-notion--stub-remote-edited (edited-time)
   "Return a `denote-sync-notion--run-json' stub reporting EDITED-TIME."
@@ -1188,7 +1202,7 @@ H1 duplicating the page's own title."
   "Neither side changed: local hash matches, remote not newer than stored."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (let ((local-hash (denote-sync--content-hash (car (denote-sync--export-body file (denote-sync-get-backend 'notion))))))
-      (denote-sync-frontmatter-set file "notion_sync_hash" local-hash))
+      (denote-sync-frontmatter-set file "sync-notion-sync-hash" local-hash))
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (test-denote-notion--stub-remote-edited "2026-02-23T18:18:00.000Z")))
       (should (eq (denote-sync--sync-state file (denote-sync-get-backend 'notion)) 'unchanged)))))
@@ -1196,7 +1210,7 @@ H1 duplicating the page's own title."
 (ert-deftest test-denote-notion/sync-state-local-only ()
   "Local changed (stored hash stale), remote not newer than stored."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_sync_hash" "stale-hash")
+    (denote-sync-frontmatter-set file "sync-notion-sync-hash" "stale-hash")
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (test-denote-notion--stub-remote-edited "2026-02-23T18:18:00.000Z")))
       (should (eq (denote-sync--sync-state file (denote-sync-get-backend 'notion)) 'local-only)))))
@@ -1205,7 +1219,7 @@ H1 duplicating the page's own title."
   "Local unchanged (stored hash current), remote newer than stored."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (let ((local-hash (denote-sync--content-hash (car (denote-sync--export-body file (denote-sync-get-backend 'notion))))))
-      (denote-sync-frontmatter-set file "notion_sync_hash" local-hash))
+      (denote-sync-frontmatter-set file "sync-notion-sync-hash" local-hash))
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (test-denote-notion--stub-remote-edited "2026-03-01T00:00:00.000Z")))
       (should (eq (denote-sync--sync-state file (denote-sync-get-backend 'notion)) 'remote-only)))))
@@ -1213,18 +1227,18 @@ H1 duplicating the page's own title."
 (ert-deftest test-denote-notion/sync-state-both-changed ()
   "Local changed (stored hash stale) and remote newer than stored."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_sync_hash" "stale-hash")
+    (denote-sync-frontmatter-set file "sync-notion-sync-hash" "stale-hash")
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (test-denote-notion--stub-remote-edited "2026-03-01T00:00:00.000Z")))
       (should (eq (denote-sync--sync-state file (denote-sync-get-backend 'notion)) 'both-changed)))))
 
 (ert-deftest test-denote-notion/sync-state-errors-on-untracked-file ()
-  "Signals a `user-error' when called on a file with no notion_id."
+  "Signals a `user-error' when called on a file with no sync-notion-id."
   (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
     (should-error (denote-sync--sync-state file (denote-sync-get-backend 'notion)) :type 'user-error)))
 
 (ert-deftest test-denote-notion/sync-state-missing-stored-hash-is-local-changed ()
-  "A missing `notion_sync_hash' (never recorded) is treated as local-changed,
+  "A missing `sync-notion-sync-hash' (never recorded) is treated as local-changed,
 the conservative default, even when the remote side has not moved."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
@@ -1240,7 +1254,7 @@ the conservative default, even when the remote side has not moved."
 ;; is guaranteed covered by the other's test.
 
 (ert-deftest test-denote-notion/sync-state-async-missing-stored-hash-is-local-changed ()
-  "The async sibling also treats a missing `notion_sync_hash' as
+  "The async sibling also treats a missing `sync-notion-sync-hash' as
 local-changed, matching the synchronous path's conservative default."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (cl-letf (((symbol-function 'denote-sync-notion--run-json-async)
@@ -1252,7 +1266,7 @@ local-changed, matching the synchronous path's conservative default."
 
 (ert-deftest test-denote-notion/sync-state-async-errors-on-untracked-file ()
   "Signals a `user-error' synchronously (before any async call is even
-attempted) when called on a file with no notion_id -- the same
+attempted) when called on a file with no sync-notion-id -- the same
 programming-error guard `denote-notion--sync-state' applies, confirmed
 independently on the async path."
   (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
@@ -1266,7 +1280,7 @@ independently on the async path."
 never invoked at all."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (let ((local-hash (denote-sync--content-hash (car (denote-sync--export-body file (denote-sync-get-backend 'notion))))))
-      (denote-sync-frontmatter-set file "notion_sync_hash" local-hash))
+      (denote-sync-frontmatter-set file "sync-notion-sync-hash" local-hash))
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (lambda (args)
                  (cond
@@ -1276,14 +1290,14 @@ never invoked at all."
       (denote-sync--export-update file (denote-sync-get-backend 'notion) nil))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; denote-notion--export-update: both-changed sets notion_conflict,
+;; denote-notion--export-update: both-changed sets sync-notion-conflict,
 ;; does not user-error
 
 (ert-deftest test-denote-notion/export-update-both-changed-sets-conflict-flag-no-error ()
-  "On `both-changed', `notion_conflict' is set and no `user-error' is raised;
+  "On `both-changed', `sync-notion-conflict' is set and no `user-error' is raised;
 `ntn pages edit' is never invoked."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_sync_hash" "stale-hash")
+    (denote-sync-frontmatter-set file "sync-notion-sync-hash" "stale-hash")
     (cl-letf (((symbol-function 'denote-sync-notion--run-json)
                (lambda (args)
                  (cond
@@ -1298,9 +1312,9 @@ never invoked at all."
 
 (ert-deftest test-denote-notion/build-conflict-buffers-with-ancestor ()
   "Local, remote, and ancestor buffers are all populated when a cache entry
-exists for the note's notion_id."
+exists for the note's sync-notion-id."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (let* ((id (string-trim (denote-sync-frontmatter-get file "notion_id") "\"" "\""))
+    (let* ((id (string-trim (denote-sync-frontmatter-get file "sync-notion-id") "\"" "\""))
            (denote-sync-cache-directory (make-temp-file "denote-notion-cache" t)))
       (unwind-protect
           (progn
@@ -1329,7 +1343,7 @@ exists for the note's notion_id."
 this is what `denote-sync-resolve-conflict' checks to pick
 `ediff-buffers' over `ediff-merge-buffers-with-ancestor'."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (let* ((id (string-trim (denote-sync-frontmatter-get file "notion_id") "\"" "\""))
+    (let* ((id (string-trim (denote-sync-frontmatter-get file "sync-notion-id") "\"" "\""))
            (denote-sync-cache-directory (make-temp-file "denote-notion-cache" t)))
       (unwind-protect
           (cl-letf (((symbol-function 'denote-sync-notion--run-json)
@@ -1362,7 +1376,6 @@ is stubbed to immediately run its startup hook (which buffer-locally adds
 the real finish function to `ediff-quit-hook') and then run that hook,
 simulating an immediate quit without a real interactive ediff session."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_conflict" t)
     (let ((denote-sync-cache-directory (make-temp-file "denote-notion-cache-test-" t))
           (captured-file nil) (captured-content nil))
       (unwind-protect
@@ -1371,6 +1384,7 @@ simulating an immediate quit without a real interactive ediff session."
                        (lambda (&rest _)
                          '((page . ((id . "ignored")))
                            (markdown . ((markdown . "remote body differs"))))))
+                      ((symbol-function 'denote-sync--sync-state) (lambda (&rest _) 'both-changed))
                       ((symbol-function 'ediff-buffers)
                        (lambda (_buf-a _buf-b startup-hooks)
                          (dolist (h startup-hooks) (funcall h))
@@ -1387,16 +1401,14 @@ simulating an immediate quit without a real interactive ediff session."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-notion--finish-conflict-resolution
 
-(ert-deftest test-denote-notion/finish-conflict-resolution-writes-clears-and-force-pushes ()
-  "Writes MERGED-CONTENT as FILE's body, clears notion_conflict, and force-pushes."
+(ert-deftest test-denote-notion/finish-conflict-resolution-writes-and-force-pushes ()
+  "Writes MERGED-CONTENT as FILE's body and force-pushes."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (denote-sync-frontmatter-set file "notion_conflict" t)
     (let (push-args)
       (cl-letf (((symbol-function 'denote-sync-push)
                  (lambda (&optional f p force) (push (list f p force) push-args))))
         (denote-sync--finish-conflict-resolution file (denote-sync-get-backend 'notion) "## Merged\n\nResolved body."))
       (should (equal (denote-sync--body-without-front-matter file) "## Merged\n\nResolved body."))
-      (should-not (denote-notion--conflicted-p file))
       (should (equal push-args (list (list file nil t)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1462,48 +1474,47 @@ opens it via `denote-dash-open-view'."
     (should (equal opened denote-notion--dash-view-conflicts-name))))
 
 (ert-deftest test-denote-notion/dash-view-conflicts-grep-filter-matches-conflicted-only ()
-  "The registered grep-filter matches a note with `notion_conflict' set to
-t, but not an untouched or cleared note -- the same distinction
-`denote-notion--conflicted-p' itself makes."
-  (test-denote-notion--with-fixture test-denote-notion--md-fixture
-    (let ((denote-dash-saved-views nil))
-      (cl-letf (((symbol-function 'denote-dash-open-view) #'ignore))
+  "The registered grep-filter matches exactly the notes whose derived state is
+`both-changed', by identifier."
+  (test-denote-notion--with-temp-denote-dir dir
+    (let* ((conflicted (expand-file-name "20260101T000000--a__tag.md" dir))
+           (clean (expand-file-name "20260101T000001--b__tag.md" dir))
+           (denote-dash-saved-views nil))
+      (with-temp-file conflicted
+        (insert "---\ntitle: \"A\"\nidentifier: \"20260101T000000\"\nsync-notion-id: \"id-a\"\n---\n\nbody\n"))
+      (with-temp-file clean
+        (insert "---\ntitle: \"B\"\nidentifier: \"20260101T000001\"\nsync-notion-id: \"id-b\"\n---\n\nbody\n"))
+      (cl-letf (((symbol-function 'denote-dash-open-view) #'ignore)
+                ((symbol-function 'denote-directory-files) (lambda (&rest _) (list conflicted clean)))
+                ((symbol-function 'denote-sync--sync-state)
+                 (lambda (f _b) (if (equal f conflicted) 'both-changed 'unchanged))))
         (denote-sync-dash-view-conflicts))
-      (let ((regexp (denote-dash-view-grep-filter
-                     (seq-find (lambda (v) (equal (denote-dash-view-name v)
-                                                  denote-notion--dash-view-conflicts-name))
-                               denote-dash-saved-views))))
-        (should-not (with-temp-buffer
-                      (insert-file-contents file)
-                      (goto-char (point-min))
-                      (re-search-forward regexp nil t)))
-        (denote-sync-frontmatter-set file "notion_conflict" t)
-        (should (with-temp-buffer
-                  (insert-file-contents file)
-                  (goto-char (point-min))
-                  (re-search-forward regexp nil t)))
-        (denote-sync-frontmatter-set file "notion_conflict" "")
-        (should-not (with-temp-buffer
-                      (insert-file-contents file)
-                      (goto-char (point-min))
-                      (re-search-forward regexp nil t)))))))
+      (let* ((regexp (denote-dash-view-grep-filter
+                      (seq-find (lambda (v) (equal (denote-dash-view-name v)
+                                                   denote-notion--dash-view-conflicts-name))
+                                denote-dash-saved-views)))
+             (matches-p (lambda (f) (with-temp-buffer
+                                      (insert-file-contents f)
+                                      (and (re-search-forward regexp nil t) t)))))
+        (should (funcall matches-p conflicted))
+        (should-not (funcall matches-p clean))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-notion--remote-dirty-p / denote-notion--mark-remote-dirty
 
 (ert-deftest test-denote-notion/remote-dirty-p-true-when-marked ()
-  "A note with notion_remote_dirty set to t is remote-dirty."
+  "A note with sync-notion-remote-dirty set to t is remote-dirty."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (denote-notion--mark-remote-dirty file t)
     (should (denote-notion--remote-dirty-p file))))
 
 (ert-deftest test-denote-notion/remote-dirty-p-false-absent ()
-  "A note with no notion_remote_dirty line is not remote-dirty."
+  "A note with no sync-notion-remote-dirty line is not remote-dirty."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (should-not (denote-notion--remote-dirty-p file))))
 
 (ert-deftest test-denote-notion/remote-dirty-p-false-cleared ()
-  "A note whose notion_remote_dirty was cleared to the empty string is not
+  "A note whose sync-notion-remote-dirty was cleared to the empty string is not
 remote-dirty."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (denote-notion--mark-remote-dirty file t)
@@ -1553,7 +1564,7 @@ file, and only tracked files."
         (delete-file untracked-file)))))
 
 (ert-deftest test-denote-notion/dash-view-remote-updated-grep-filter-matches-dirty-only ()
-  "The registered grep-filter matches a note marked `notion_remote_dirty',
+  "The registered grep-filter matches a note marked `sync-notion-remote-dirty',
 but not an untouched or cleared one."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (let ((denote-dash-saved-views nil))
@@ -1584,7 +1595,7 @@ but not an untouched or cleared one."
 (ert-deftest test-denote-notion/dash-views-grep-filters-against-four-state-fixture-matrix ()
   "The tracked/conflict/remote-dirty grep filters each match exactly the
 right subset of a four-file fixture matrix covering every combination of
-tracked, conflicted, and remote-dirty state."
+tracked and remote-dirty state."
   (test-denote-notion--with-temp-denote-dir dir
     (let* ((tracked-conflicted (expand-file-name "20260101T000000--a__tag.md" dir))
            (tracked-clean (expand-file-name "20260101T000001--b__tag.md" dir))
@@ -1597,10 +1608,8 @@ tracked, conflicted, and remote-dirty state."
       (with-temp-file untracked (insert test-denote-notion--untracked-fixture))
       (with-temp-file tracked-remote-dirty
         (insert "---\ntitle: \"D\"\nidentifier: \"20260101T000003\"\nnotion_id: \"id-d\"\n---\n\nbody\n"))
-      (denote-sync-frontmatter-set tracked-conflicted "notion_conflict" t)
       (denote-notion--mark-remote-dirty tracked-remote-dirty t)
-      (let* ((tracked-regexp (denote-sync--frontmatter-nonempty-value-regexp "notion_id"))
-             (conflict-regexp denote-notion--dash-conflict-grep-filter)
+      (let* ((tracked-regexp (denote-sync--frontmatter-nonempty-value-regexp "sync-notion-id"))
              (remote-dirty-regexp denote-notion--dash-remote-dirty-grep-filter)
              (matches-p (lambda (regexp f)
                           (with-temp-buffer
@@ -1612,11 +1621,6 @@ tracked, conflicted, and remote-dirty state."
         (should (funcall matches-p tracked-regexp tracked-clean))
         (should (funcall matches-p tracked-regexp tracked-remote-dirty))
         (should-not (funcall matches-p tracked-regexp untracked))
-        ;; conflict filter: matches only the conflicted file
-        (should (funcall matches-p conflict-regexp tracked-conflicted))
-        (should-not (funcall matches-p conflict-regexp tracked-clean))
-        (should-not (funcall matches-p conflict-regexp untracked))
-        (should-not (funcall matches-p conflict-regexp tracked-remote-dirty))
         ;; remote-dirty filter: matches only the remote-dirty file
         (should-not (funcall matches-p remote-dirty-regexp tracked-conflicted))
         (should-not (funcall matches-p remote-dirty-regexp tracked-clean))
@@ -1659,7 +1663,7 @@ never considered stale -- the conservative default."
 
 (ert-deftest test-denote-notion/refresh-remote-dirty-marker-async-marks-dirty-when-stale ()
   "Marks the file dirty when the stubbed fetch reports a newer
-`last_edited_time' than the file's own stored `notion_edited'."
+`last_edited_time' than the file's own stored `sync-notion-edited'."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (let (on-done-called)
       (cl-letf (((symbol-function 'denote-sync-notion--run-json-async)
@@ -1777,7 +1781,7 @@ nonpositive bound."
 
 (ert-deftest test-denote-notion/sync-all-process-note-unchanged-takes-no-action ()
   "`unchanged' increments the `unchanged' count and calls neither push nor
-pull nor sets a conflict flag."
+pull."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (let ((counts (list (cons 'unchanged 0) (cons 'pushed 0) (cons 'pulled 0)
                          (cons 'conflicted 0) (cons 'errored 0)))
@@ -1791,8 +1795,7 @@ pull nor sets a conflict flag."
         (denote-notion--sync-all-process-note file counts (lambda () (setq done-called t))))
       (should done-called)
       (should (equal (cdr (assq 'unchanged counts)) 1))
-      (should (equal (cdr (assq 'pushed counts)) 0))
-      (should-not (denote-notion--conflicted-p file)))))
+      (should (equal (cdr (assq 'pushed counts)) 0)))))
 
 (ert-deftest test-denote-notion/sync-all-process-note-local-only-pushes ()
   "`local-only' calls `denote-notion--export-push-async' (not a second
@@ -1831,9 +1834,9 @@ second sync-state fetch) and increments the `pulled' count."
       (should (equal pulled-id "2f094bf7-31a4-8081-8280-f0a225af4db2"))
       (should (equal (cdr (assq 'pulled counts)) 1)))))
 
-(ert-deftest test-denote-notion/sync-all-process-note-both-changed-marks-conflict ()
-  "`both-changed' sets `notion_conflict' directly, without a `user-error',
-and increments the `conflicted' count, calling neither push nor pull."
+(ert-deftest test-denote-notion/sync-all-process-note-both-changed-counts-conflict ()
+  "`both-changed' increments the `conflicted' count without a `user-error' or
+writing any flag, calling neither push nor pull."
   (test-denote-notion--with-fixture test-denote-notion--md-fixture
     (let ((counts (list (cons 'unchanged 0) (cons 'pushed 0) (cons 'pulled 0)
                          (cons 'conflicted 0) (cons 'errored 0)))
@@ -1846,7 +1849,7 @@ and increments the `conflicted' count, calling neither push nor pull."
                  (lambda (&rest args) (error "unexpected pull: %S" args))))
         (denote-notion--sync-all-process-note file counts (lambda () (setq done-called t))))
       (should done-called)
-      (should (denote-notion--conflicted-p file))
+      (should-not (denote-sync-frontmatter-get file "sync-notion-conflict"))
       (should (equal (cdr (assq 'conflicted counts)) 1)))))
 
 (ert-deftest test-denote-notion/sync-all-process-note-classification-error-is-errored ()

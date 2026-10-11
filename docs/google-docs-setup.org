@@ -37,15 +37,15 @@ When a note is synchronized:
 - *Pull*: Fetches the remote Google Doc and its revision metadata, detecting local vs remote changes.
 - *Metadata Tracking*: =denote-sync-gdocs= stores tracking metadata in the note's YAML front-matter:
   #+begin_src yaml
-  gdoc_id: "1bZtEcHRcff_m05cw2Q6gtusYwRUYBfYzJDJoZ-5ie_4"
-  gdoc_account: "user@example.com"
-  gdoc_folder: "0AABGCYFsVQcEUk9PVA"
-  gdoc_created: "2026-10-07T03:15:23.073Z"
-  gdoc_edited: "2026-10-07T03:16:25.774Z"
-  gdoc_sync_hash: "bc4c83432e7a187a85a1ee18e077a5c7ef35f658"
+  sync-gdoc-id: "1bZtEcHRcff_m05cw2Q6gtusYwRUYBfYzJDJoZ-5ie_4"
+  sync-gdoc-account: "user@example.com"
+  sync-gdoc-folder: "0AABGCYFsVQcEUk9PVA"
+  sync-gdoc-created: "2026-10-07T03:15:23.073Z"
+  sync-gdoc-edited: "2026-10-07T03:16:25.774Z"
+  sync-gdoc-sync-hash: "bc4c83432e7a187a85a1ee18e077a5c7ef35f658"
   #+end_src
 
-Because each note explicitly records its =gdoc_account=, notes belonging to different
+Because each note explicitly records its =sync-gdoc-account=, notes belonging to different
 identities (e.g. personal, work, community) can coexist in the same Denote directory
 and will always synchronize against the correct Google account.
 
@@ -222,7 +222,7 @@ belong in a user configuration file under =~/.emacs.d/user/=:
 
 ** 1. Account Resolution Precedence
 When pushing or pulling a note, the Google account is resolved in order:
-1. *Front Matter*: The =gdoc_account= property in the note's YAML front-matter.
+1. *Front Matter*: The =sync-gdoc-account= property in the note's YAML front-matter.
 2. *Named Parent*: The account associated with the chosen registry parent.
 3. *Global Default*: =denote-sync-gdocs-default-account=.
 4. *Single Account Auto-Detection*: If only one account exists in =gog=, it is used automatically.
@@ -234,7 +234,7 @@ When pushing an untracked note or running interactive setup commands:
 - Completion candidates allow switching to another account with fuzzy or orderless matching.
 
 ** 3. Stamping Account to Note
-When a new note is pushed with =denote-sync-push=, =gdoc_account= is automatically written
+When a new note is pushed with =denote-sync-push=, =sync-gdoc-account= is automatically written
 to the note's front-matter. This ensures subsequent pushes, pulls, or batch syncs
 (=denote-sync-all=) always use that exact account.
 
@@ -243,7 +243,7 @@ To reassign an existing note to a different Google account:
 #+begin_src text
 M-x denote-sync-gdocs-set-account RET
 #+end_src
-Pick the account from the completion list. The note's =gdoc_account= front-matter
+Pick the account from the completion list. The note's =sync-gdoc-account= front-matter
 is updated immediately.
 
 ** 5. Registering Target Folders by Account
@@ -280,8 +280,8 @@ gog auth doctor
 #+end_src
 
 ** Reconciling Conflicts
-If a note was edited both locally and remotely in Google Docs, =denote-sync= marks the
-note with =gdoc_conflict: t= and prevents overwriting. Run:
+If a note was edited both locally and remotely in Google Docs, =denote-sync= detects it
+from the stored sync hash and refuses to overwrite either side. Run:
 #+begin_src text
 M-x denote-sync-resolve-conflict RET
 #+end_src

@@ -55,6 +55,29 @@
                   (lambda (id) (when (equal id "20260101T000000") "20990101T000000")))
                  "a [[denote:20990101T000000][x]] b denote:20260202T000000")))
 
+(ert-deftest test-denote-sync-silo/replace-denote-ids-survives-matching-callback ()
+  "A callback that runs its own regexp matches must not corrupt the replacement."
+  (should (equal (denote-sync-silo--replace-denote-ids
+                  "long prefix text denote:20260101T000000 and more text after"
+                  (lambda (id)
+                    (string-match "x" "x")
+                    (concat id "9")))
+                 "long prefix text denote:20260101T0000009 and more text after")))
+
+(ert-deftest test-denote-sync-silo/prompts-use-annotated-completing-read-table-api ()
+  "Interactive pickers hand ACR a candidate table, with the prompt as a keyword."
+  (let ((denote-sync-silo-rules (list (list :name "R1" :source-prefix "1" :directory "/tmp/x/")))
+        (denote-sync-parent-registry '(("P1" notion (data-source . "ds"))))
+        seen)
+    (cl-letf (((symbol-function 'completing-read)
+               (lambda (_prompt coll &rest _)
+                 (push (all-completions "" coll) seen)
+                 "R1")))
+      (should (equal (eval (cadr (interactive-form 'denote-sync-silo-export-tree)) t)
+                     '("R1"))))
+    (cl-letf (((symbol-function 'completing-read) (lambda (&rest _) "P1")))
+      (should (equal (car (denote-sync--acr-select-parent)) "P1")))))
+
 ;;; End-to-end
 
 (defmacro test-silo--with-silos (&rest body)
@@ -262,7 +285,7 @@
           (b (denote-sync-get-backend 'silo)))
      (denote-sync-push file (list :directory tgt :target-format 'same) nil b)
      (should (equal (denote-sync--get-id file b) "20261009T100000"))
-     (should (equal (denote-sync-frontmatter-get file "silo_id") "20261009T100000"))
+     (should (equal (denote-sync-frontmatter-get file "sync-silo-id") "20261009T100000"))
      (with-temp-buffer (insert-file-contents file)
                        (should-not (string-match-p "^---" (buffer-string))))
      (let ((path (denote-sync-silo-with-target tgt (denote-get-path-by-id "20261009T100000"))))
@@ -317,7 +340,7 @@
        (should (string-match-p "Malformed" (cadr err))))
      (should-not (denote-sync-silo-with-target tgt (denote-directory-files)))
      (should-not (denote-sync-frontmatter-get
-                  (expand-file-name "20261009T100000==1--alpha__t.md" src) "silo_id")))))
+                  (expand-file-name "20261009T100000==1--alpha__t.md" src) "sync-silo-id")))))
 
 (ert-deftest test-denote-sync-silo/failed-push-unseeds-remaining-notes ()
   (test-silo--with-silos
@@ -370,7 +393,7 @@
        (should (string-prefix-p src new))
        (should (equal (denote-retrieve-filename-signature new) "3"))
        (should (equal (denote-sync--get-id new b) "20260101T000000"))
-       (should (equal (denote-sync-frontmatter-get new "silo_dir") (format "%S" (expand-file-name tgt))))
+       (should (equal (denote-sync-frontmatter-get new "sync-silo-dir") (format "%S" (expand-file-name tgt))))
        (should (eq (denote-sync--sync-state new b) 'unchanged))))))
 
 (provide 'test-denote-sync-silo)

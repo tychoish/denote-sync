@@ -31,17 +31,17 @@ Hello world body.
         (progn
           (with-temp-file file
             (insert "#+title: T\n#+identifier: 20260101T000000\n\nBody\n"))
-          (denote-sync-frontmatter-set file "silo_id" "20990101T000000")
-          (should (equal (denote-sync-frontmatter-get file "silo_id") "20990101T000000"))
-          (denote-sync-frontmatter-set file "silo_id" "20990202T000000")
-          (denote-sync-frontmatter-set file "silo_conflict" t)
-          (should (equal (denote-sync-frontmatter-get file "silo_id") "20990202T000000"))
-          (should (equal (denote-sync-frontmatter-get file "silo_conflict") "t"))
+          (denote-sync-frontmatter-set file "sync-silo-id" "20990101T000000")
+          (should (equal (denote-sync-frontmatter-get file "sync-silo-id") "20990101T000000"))
+          (denote-sync-frontmatter-set file "sync-silo-id" "20990202T000000")
+          (denote-sync-frontmatter-set file "sync-silo-edited" t)
+          (should (equal (denote-sync-frontmatter-get file "sync-silo-id") "20990202T000000"))
+          (should (equal (denote-sync-frontmatter-get file "sync-silo-edited") "t"))
           (with-temp-buffer
             (insert-file-contents file)
             (should-not (string-match-p "^---" (buffer-string)))
             (should (string-match-p "\n\nBody\n" (buffer-string)))
-            (should (= 1 (how-many "^#\\+silo_id:" (point-min))))))
+            (should (= 1 (how-many "^#\\+sync-silo-id:" (point-min))))))
       (when-let* ((b (find-buffer-visiting file))) (kill-buffer b))
       (delete-file file))))
 
@@ -58,10 +58,10 @@ Hello world body.
       (delete-directory dir t))))
 
 (ert-deftest test-denote-sync/dash-regexps-match-org-keyword-lines ()
-  (let ((re (denote-sync--frontmatter-nonempty-value-regexp "silo_id")))
-    (should (string-match-p re "silo_id: \"x\""))
-    (should (string-match-p re "#+silo_id: 2026"))
-    (should-not (string-match-p re "#+silo_id:"))))
+  (let ((re (denote-sync--frontmatter-nonempty-value-regexp "sync-silo-id")))
+    (should (string-match-p re "sync-silo-id: \"x\""))
+    (should (string-match-p re "#+sync-silo-id: 2026"))
+    (should-not (string-match-p re "#+sync-silo-id:"))))
 
 (ert-deftest test-denote-sync/unknown-backend-signals-error ()
   "Querying an unregistered backend name signals an error."
@@ -160,6 +160,54 @@ Hello world body.
           (should (equal (denote-sync--get-id temp-file notion-b) "nid-1"))
           (should (equal (denote-sync--get-id temp-file gdoc-b) "gid-2")))
       (delete-file temp-file))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; sync- front-matter keys and legacy fallback
+
+(ert-deftest test-denote-sync/prop-key-is-sync-prefixed-and-hyphenated ()
+  (should (equal (denote-sync--prop-key "silo" "id") "sync-silo-id"))
+  (should (equal (denote-sync--prop-key "silo" "sync_hash") "sync-silo-sync-hash"))
+  (should (equal (denote-sync--legacy-key "sync-silo-sync-hash") "silo_sync_hash"))
+  (should-not (denote-sync--legacy-key "title")))
+
+(ert-deftest test-denote-sync/legacy-keys-read-and-migrate-markdown ()
+  "A legacy `notion_id' line reads through the new key and is replaced on write."
+  (let ((file (make-temp-file "denote-sync-legacy-" nil ".md")))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "---\ntitle: T\nnotion_id: \"abc\"\nnotion_sync_hash: \"h1\"\n---\nBody\n"))
+          (should (equal (denote-sync-frontmatter-get file "sync-notion-id") "\"abc\""))
+          (denote-sync-frontmatter-set file "sync-notion-sync-hash" "h2")
+          (let ((text (with-temp-buffer (insert-file-contents file) (buffer-string))))
+            (should (string-match-p "^sync-notion-sync-hash: \"h2\"$" text))
+            (should-not (string-match-p "notion_sync_hash" text))
+            (should (string-match-p "^notion_id: " text)))
+          (should (equal (denote-sync-frontmatter-get file "sync-notion-sync-hash") "\"h2\"")))
+      (when-let* ((b (find-buffer-visiting file))) (kill-buffer b))
+      (delete-file file))))
+
+(ert-deftest test-denote-sync/legacy-keys-read-and-migrate-org ()
+  (let ((file (make-temp-file "denote-sync-legacy-" nil ".org")))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "#+title: T\n#+silo_id: 20260101T000000\n#+silo_dir: /tmp/x/\n\n* Body\n"))
+          (should (equal (denote-sync-frontmatter-get file "sync-silo-id") "20260101T000000"))
+          (denote-sync-frontmatter-set file "sync-silo-id" "20260202T000000")
+          (let ((text (with-temp-buffer (insert-file-contents file) (buffer-string))))
+            (should (string-match-p "^#\\+sync-silo-id: 20260202T000000$" text))
+            (should-not (string-match-p "^#\\+silo_id" text))
+            (should (string-match-p "^#\\+silo_dir: /tmp/x/$" text))))
+      (when-let* ((b (find-buffer-visiting file))) (kill-buffer b))
+      (delete-file file))))
+
+(ert-deftest test-denote-sync/dash-regexps-match-both-spellings ()
+  (let ((re (format "^\\(?:#\\+\\)?%s:[ \t]*t[ \t]*$"
+                    (denote-sync--legacy-alternation "sync-notion-remote-dirty"))))
+    (should (string-match-p re "sync-notion-remote-dirty: t"))
+    (should (string-match-p re "#+notion_remote_dirty: t"))
+    (should-not (string-match-p re "sync-notion-remote-dirtys: t"))))
 
 (provide 'test-denote-sync)
 ;;; test-denote-sync.el ends here

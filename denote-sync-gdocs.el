@@ -35,7 +35,7 @@
 (defcustom denote-sync-gdocs-default-account nil
   "Default Google account (email address) for `denote-sync-gdocs'.
 Used when creating documents if no account is specified by parent, and
-as a fallback when syncing notes without a `gdoc_account' front-matter property.
+as a fallback when syncing notes without a `sync-gdoc-account' front-matter property.
 If nil, `gog' uses its own default account."
   :type '(choice (const :tag "None (use gog default)" nil)
                  (string :tag "Email address"))
@@ -281,7 +281,7 @@ PROMPT is the prompt string.  DEFAULT is the initial default choice."
   "Return the Google account associated with FILE, or fallback to default.
 If no account is set on FILE and `denote-sync-gdocs-default-account' is nil,
 automatically uses the account if exactly one account is authorized in `gog'."
-  (let ((acct (denote-sync-frontmatter-get file "gdoc_account")))
+  (let ((acct (denote-sync-frontmatter-get file (denote-sync--prop-key "gdoc" "account"))))
     (cond
      ((and acct (not (string-empty-p acct)) (not (equal acct "\"\"")))
       (string-trim acct "\"" "\""))
@@ -319,9 +319,9 @@ automatically uses the account if exactly one account is authorized in `gog'."
                (edited-time (plist-get meta :edited-time))
                (url (or (map-elt created 'webViewLink) (denote-sync-gdocs--link-url id))))
           (when (and account (not (string-empty-p account)))
-            (denote-sync-frontmatter-set file "gdoc_account" account))
+            (denote-sync-frontmatter-set file (denote-sync--prop-key "gdoc" "account") account))
           (when (and folder (not (string-empty-p folder)))
-            (denote-sync-frontmatter-set file "gdoc_folder" folder))
+            (denote-sync-frontmatter-set file (denote-sync--prop-key "gdoc" "folder") folder))
           (list :id id :url url :created-time created-time :edited-time edited-time))
       (when (file-exists-p temp-file)
         (delete-file temp-file)))))
@@ -434,7 +434,7 @@ automatically uses the account if exactly one account is authorized in `gog'."
       (denote-sync--write-body file body)
       (denote-sync--record-synced-content file (alist-get 'google-docs denote-sync-backends) id body edited))
     (when edited
-      (denote-sync-frontmatter-set file "gdoc_edited" edited))))
+      (denote-sync-frontmatter-set file (denote-sync--prop-key "gdoc" "edited") edited))))
 
 (defun denote-sync-gdocs--refresh-file (file id)
   "Synchronously refresh FILE from Google Doc ID."
@@ -469,11 +469,11 @@ Optional ACCOUNT specifies the Google account email; defaults to
             '("gdoc") 'markdown-yaml nil created)
     (let ((new-file (buffer-file-name)))
       (denote-sync--write-body new-file body)
-      (denote-sync-frontmatter-set new-file "gdoc_id" id)
-      (denote-sync-frontmatter-set new-file "gdoc_created" (or created ""))
-      (denote-sync-frontmatter-set new-file "gdoc_edited" (or edited ""))
+      (denote-sync-frontmatter-set new-file (denote-sync--prop-key "gdoc" "id") id)
+      (denote-sync-frontmatter-set new-file (denote-sync--prop-key "gdoc" "created") (or created ""))
+      (denote-sync-frontmatter-set new-file (denote-sync--prop-key "gdoc" "edited") (or edited ""))
       (when (and acct (not (string-empty-p acct)))
-        (denote-sync-frontmatter-set new-file "gdoc_account" acct))
+        (denote-sync-frontmatter-set new-file (denote-sync--prop-key "gdoc" "account") acct))
       (denote-sync--record-synced-content new-file (alist-get 'google-docs denote-sync-backends) id body edited)
       (save-buffer)
       (message "Imported %s" (file-name-nondirectory new-file))
@@ -521,8 +521,8 @@ Interactively, prompts with completion over all authorized accounts in `gog'."
   (let ((f (or file (buffer-file-name))))
     (unless (and f (file-exists-p f))
       (user-error "No valid file specified"))
-    (denote-sync-frontmatter-set f "gdoc_account" account)
-    (message "Set %s gdoc_account to %s" (file-name-nondirectory f) account)))
+    (denote-sync-frontmatter-set f (denote-sync--prop-key "gdoc" "account") account)
+    (message "Set %s sync-gdoc-account to %s" (file-name-nondirectory f) account)))
 
 ;;;###autoload
 (defun denote-sync-gdocs-add-account (email)

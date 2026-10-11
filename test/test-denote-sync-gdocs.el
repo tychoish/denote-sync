@@ -110,8 +110,8 @@
               (should (equal (plist-get res :id) "new-gdoc-id"))
               (should (equal (plist-get res :created-time) "2026-10-06T12:00:00.000Z"))
               (should (equal (plist-get res :edited-time) "2026-10-06T12:05:00.000Z"))
-              (should (equal (denote-sync-frontmatter-get temp-file "gdoc_account") "\"test@example.com\""))
-              (should (equal (denote-sync-frontmatter-get temp-file "gdoc_folder") "\"folder1\"")))))
+              (should (equal (denote-sync-frontmatter-get temp-file "sync-gdoc-account") "\"test@example.com\""))
+              (should (equal (denote-sync-frontmatter-get temp-file "sync-gdoc-folder") "\"folder1\"")))))
       (delete-file temp-file)
       (delete-directory denote-sync-cache-directory t))))
 
@@ -149,7 +149,7 @@
                      (lambda (&rest _args) (list 0 "" ""))))
             (funcall (denote-sync-backend-create-fn backend)
                      temp-file '(nil . nil) "Content")
-            (should (equal (denote-sync-frontmatter-get temp-file "gdoc_account")
+            (should (equal (denote-sync-frontmatter-get temp-file "sync-gdoc-account")
                            "\"mydefault@example.com\""))))
       (delete-file temp-file)
       (delete-directory denote-sync-cache-directory t))))
@@ -176,7 +176,7 @@
           (with-temp-file temp-file
             (insert "---\ntitle: Note\n---\nBody\n"))
           (denote-sync-gdocs-set-account temp-file "changed@example.com")
-          (should (equal (denote-sync-frontmatter-get temp-file "gdoc_account")
+          (should (equal (denote-sync-frontmatter-get temp-file "sync-gdoc-account")
                          "\"changed@example.com\""))
           (should (equal (denote-sync-gdocs--file-account temp-file) "changed@example.com")))
       (delete-file temp-file))))
