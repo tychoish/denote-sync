@@ -35,6 +35,11 @@ jobs:
           gnu-mirror: "ustc"
           nongnu-mirror: "ustc"
 
+      # the Markdown tree-sitter grammars are built on first use (see
+      # `mdwn-install-grammars'), and the -ci images ship no C compiler
+      - name: Install C compiler for tree-sitter grammars
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc libc6-dev
+
       - name: Run Tests
         uses: tychoish/elisp-ci@v0.1.2
         with:

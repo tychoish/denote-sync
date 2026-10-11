@@ -1292,8 +1292,9 @@ never invoked at all."
                   ((member "edit" args) (error "unexpected pages edit call on a both-changed file"))
                   ((member "get" args) `((page . ((last_edited_time . "2026-03-01T00:00:00.000Z")))))
                   (t (error "unexpected call: %S" args))))))
-      (denote-sync--export-update file (denote-sync-get-backend 'notion) nil))
-    (should (denote-notion--conflicted-p file))))
+      (denote-sync--export-update file (denote-sync-get-backend 'notion) nil)
+      ;; conflict state is derived from the remote, so keep the stub in scope
+      (should (denote-notion--conflicted-p file)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; denote-notion--build-conflict-buffers

@@ -166,7 +166,15 @@
            (should (string-match-p "\\*\\*bold\\*\\*\\|_bold_\\|\\*bold\\*"
                                    (denote-sync--body-without-front-matter path)))))))))
 
+(defun test-silo--require-mdwn-grammars ()
+  "Install the Markdown grammars if missing; skip the test when that fails."
+  (condition-case err
+      (let ((mdwn-install-grammars t))
+        (mdwn--ensure-grammars))
+    (error (ert-skip (error-message-string err)))))
+
 (ert-deftest test-denote-sync-silo/markdown-to-org-target ()
+  (test-silo--require-mdwn-grammars)
   (test-silo--with-silos
    (let* ((file (test-silo--note src "20261009T100000" "1" "alpha" "# Head\n\nText"))
           (b (denote-sync-get-backend 'silo)))

@@ -5,7 +5,15 @@
 (require 'ert)
 (require 'mdwn)
 
+(defun test-mdwn--require-grammars ()
+  "Install the Markdown grammars if missing; skip the test when that fails."
+  (condition-case err
+      (let ((mdwn-install-grammars t))
+        (mdwn--ensure-grammars))
+    (error (ert-skip (error-message-string err)))))
+
 (defun test-mdwn--conv (md)
+  (test-mdwn--require-grammars)
   (mdwn-to-org md))
 
 (ert-deftest test-mdwn/headings ()
