@@ -984,7 +984,7 @@ rich_text array), backdates the note's identifier/date to the page's
                (lambda (&rest _)
                  (json-parse-string test-denote-notion--get-page-response-json
                                     :object-type 'alist :array-type 'list))))
-      (denote-sync-pull nil file))
+      (denote-sync-pull nil file nil t))
     (should (equal (denote-sync-frontmatter-get file "sync-notion-edited")
                    "\"2020-05-04T11:00:00.000Z\""))
     (with-temp-buffer
@@ -1011,7 +1011,7 @@ stale tags; the fetched page now has only one."
                (lambda (&rest _)
                  (json-parse-string test-denote-notion--get-page-response-json
                                     :object-type 'alist :array-type 'list))))
-      (denote-sync-pull nil file))
+      (denote-sync-pull nil file nil t))
     (should (equal (denote-sync-frontmatter-get file "sync-notion-tags")
                    "[\"engineering\"]"))))
 
@@ -1043,7 +1043,8 @@ instead of creating a duplicate."
                  (lambda (&rest _)
                    (json-parse-string test-denote-notion--get-page-response-json
                                       :object-type 'alist :array-type 'list))))
-        (denote-sync-pull "page-id"))
+        ;; forced: the fixture has no sync hash, so it reads as both-changed
+        (denote-sync-pull "page-id" nil nil t))
       (should (equal (length (directory-files dir nil "\\.md\\'")) 1))
       (should (equal (denote-sync-frontmatter-get tracked "sync-notion-edited")
                      "\"2020-05-04T11:00:00.000Z\"")))))

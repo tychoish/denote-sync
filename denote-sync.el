@@ -842,20 +842,39 @@ Honors `denote-sync-default-parent' and `denote-sync-parent-registry'."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Export & Push
 
+(defcustom denote-sync-prompt-resolve-conflicts t
+  "When non-nil, a push that finds both sides changed offers to merge.
+The merge runs `denote-sync-resolve-conflict'.  Never prompts in batch mode."
+  :type 'boolean
+  :group 'denote-sync)
+
+(defvar denote-sync--push-outcome nil
+  "How the last `denote-sync--export-update' ended.
+One of `pushed', `in-sync' (nothing to push), `conflict' (both sides
+changed, nothing written) or `remote-changed' (only the remote changed, so
+a push would discard its edits; nothing written).")
+
 (defun denote-sync--export-update (file backend force)
   "Update FILE's remote document for BACKEND.
-With FORCE non-nil, overwrite without checking sync-state."
+With FORCE non-nil, overwrite without checking sync-state.  Sets
+`denote-sync--push-outcome'."
   (let* ((id (denote-sync--get-id file backend))
          (state (unless force (denote-sync--sync-state file backend))))
+    (setq denote-sync--push-outcome
+          (pcase state
+            ('unchanged 'in-sync) ('both-changed 'conflict) ('remote-only 'remote-changed)
+            (_ 'pushed)))
     (when (eq state 'both-changed)
-      (message
-       "%s item %s changed since the last sync (remote and local both changed) -- run `denote-sync-resolve-conflict' to reconcile"
-       (capitalize (symbol-name (denote-sync-backend-name backend))) id))
-    (if (memq state '(unchanged both-changed))
+      (denote-sync--offer-merge file backend id))
+    (if (memq state '(unchanged both-changed remote-only))
         (progn
-          (unless (eq state 'both-changed)
-            (message "%s item %s already in sync; nothing to push"
-                     (capitalize (symbol-name (denote-sync-backend-name backend))) id))
+          (pcase state
+            ('unchanged
+             (message "%s item %s already in sync; nothing to push"
+                      (capitalize (symbol-name (denote-sync-backend-name backend))) id))
+            ('remote-only
+             (message "%s item %s changed remotely only; pull it instead of pushing"
+                      (capitalize (symbol-name (denote-sync-backend-name backend))) id)))
           (cons (funcall (denote-sync-backend-link-url-fn backend) id) nil))
       (pcase-let ((`(,content . ,dangling) (denote-sync--export-body file backend)))
         (let ((result (funcall (denote-sync-backend-update-fn backend) file id content force)))
@@ -881,7 +900,9 @@ With FORCE non-nil, overwrite without checking sync-state."
 ;;;###autoload
 (defun denote-sync-push (&optional file parent force backend)
   "Push FILE (default current buffer note) to remote.
-If FILE is tracked, updates its remote document.
+If FILE is tracked, updates its remote document, unless it is already up
+to date, only the remote changed, or both sides changed (it offers the
+merge); with FORCE (prefix argument) it overwrites the remote regardless.
 If FILE is untracked, PARENT is required (prompted if nil).
 If BACKEND is nil:
 - If FILE is tracked by 1 backend, uses it.
@@ -915,8 +936,13 @@ Note lookups are memoized for the duration of the push."
              (t nil))))
       (if (and target-backend (denote-sync-tracked-p file target-backend))
           (pcase-let ((`(,url . ,dangling) (denote-sync--export-update file target-backend force)))
-            (message "Exported to %s" url)
-            (denote-sync--report-dangling-links dangling))
+            (pcase denote-sync--push-outcome
+              ('pushed (message "Exported to %s" url))
+              ('in-sync (message "Not exported: %s is already up to date (C-u to force)" url))
+              ('remote-changed (message "Not exported: only the remote changed; pull it, or C-u to force push"))
+              ('conflict (message "Not exported: both sides changed; resolve the conflict or C-u to force push")))
+            (when (eq denote-sync--push-outcome 'pushed)
+              (denote-sync--report-dangling-links dangling)))
         (let* ((target-info (if (and parent target-backend)
                                 (cons target-backend parent)
                               (denote-sync--read-parent target-backend)))
@@ -929,17 +955,54 @@ Note lookups are memoized for the duration of the push."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Import & Pull
 
+(defun denote-sync--offer-merge (file backend id)
+  "Report FILE's conflict with BACKEND (document ID); offer the merge session.
+Return non-nil when the merge session was started."
+  (let ((name (capitalize (symbol-name (denote-sync-backend-name backend)))))
+    (if (and denote-sync-prompt-resolve-conflicts (not noninteractive)
+             (y-or-n-p (format "%s item %s changed locally and remotely; merge now? " name id)))
+        (progn (denote-sync-resolve-conflict file backend) t)
+      (message "%s item %s changed since the last sync (remote and local both changed) -- run `denote-sync-resolve-conflict' to reconcile"
+               name id)
+      nil)))
+
+(defun denote-sync--refresh-checked (file backend id force)
+  "Refresh FILE from BACKEND's document ID, guarded by its sync state.
+Skips an up-to-date note, declines when only the local note changed (a
+pull would discard its edits) and, when both sides changed, offers the
+merge instead of overwriting.  FORCE refreshes unconditionally."
+  (let ((name (capitalize (symbol-name (denote-sync-backend-name backend))))
+        (state (unless force (denote-sync--sync-state file backend))))
+    (pcase state
+      ('unchanged
+       (message "Not pulled: %s is already up to date with %s (C-u to force)"
+                (file-name-nondirectory file) name))
+      ('local-only
+       (message "Not pulled: %s has local changes the remote lacks; push it, or C-u to force"
+                (file-name-nondirectory file)))
+      ('both-changed
+       (denote-sync--offer-merge file backend id)
+       (message "Not pulled: %s has local and remote changes (C-u to force)"
+                (file-name-nondirectory file)))
+      (_
+       (funcall (denote-sync-backend-refresh-fn backend) file id)
+       (message "Refreshed %s from %s" (file-name-nondirectory file) name)))))
+
 ;;;###autoload
-(defun denote-sync-pull (&optional remote-id target-file backend)
+(defun denote-sync-pull (&optional remote-id target-file backend force)
   "Pull a remote document into Denote, creating or refreshing as needed.
 Without REMOTE-ID, refreshes TARGET-FILE (or current buffer file).
 With REMOTE-ID (an id or URL):
 - If already tracked by any note, refreshes that note.
-- Otherwise imports a new note from the remote document."
+- Otherwise imports a new note from the remote document.
+A refresh is skipped when the note is already up to date or has only local
+changes, and when both sides changed it offers the merge instead of
+overwriting; FORCE (prefix argument) refreshes regardless."
   (interactive
    (list (let ((file (denote-sync--file-at-point)))
            (unless (and file (denote-sync-tracked-p file))
-             (read-string "Remote document ID or URL: ")))))
+             (read-string "Remote document ID or URL: ")))
+         nil nil current-prefix-arg))
   (let* ((file (or target-file (denote-sync--file-at-point)))
          (target-backend (when backend
                            (if (symbolp backend) (denote-sync-get-backend backend) backend))))
@@ -960,10 +1023,7 @@ With REMOTE-ID (an id or URL):
                                      nil t)))
                         (denote-sync-get-backend (intern choice))))))
                  (id (denote-sync--get-id file b)))
-            (funcall (denote-sync-backend-refresh-fn b) file id)
-            (message "Refreshed %s from %s"
-                     (file-name-nondirectory file)
-                     (capitalize (symbol-name (denote-sync-backend-name b))))))
+            (denote-sync--refresh-checked file b id force)))
       (let* ((b (or target-backend
                     (denote-sync--detect-backend-from-id remote-id)
                     (let ((registered (denote-sync-registered-backends)))
@@ -987,11 +1047,7 @@ With REMOTE-ID (an id or URL):
                            file)
                          (denote-sync--find-tracked-file id b))))
         (if target
-            (progn
-              (funcall (denote-sync-backend-refresh-fn b) target id)
-              (message "Refreshed %s from %s"
-                       (file-name-nondirectory target)
-                       (capitalize (symbol-name (denote-sync-backend-name b)))))
+            (denote-sync--refresh-checked target b id force)
           (funcall (denote-sync-backend-import-fn b) id))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

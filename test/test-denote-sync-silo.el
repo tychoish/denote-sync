@@ -176,7 +176,7 @@
        (should (equal (denote-retrieve-filename-signature path) "1"))
        (should (string-match-p "^\\* Head" (denote-sync--body-without-front-matter path)))
        ;; remote body comes back canonical; pull across formats is refused
-       (should-error (denote-sync-pull nil file b) :type 'user-error)))))
+       (should-error (denote-sync-pull nil file b t) :type 'user-error)))))
 
 (ert-deftest test-denote-sync-silo/tree-export-rewrites-links ()
   (test-silo--with-silos
@@ -474,3 +474,74 @@
     (denote-sync--record-synced-content file b "id-1" nil)
     (should-not (denote-sync--cache-read 'silo "id-1"))
     (should (equal (denote-sync--get-sync-hash file b) (denote-sync--change-key file b)))))
+
+(ert-deftest test-denote-sync-silo/push-and-pull-report-up-to-date-and-force ()
+  (test-silo--with-silos
+   (let* ((file (test-silo--note src "20261009T100000" nil "alpha" "Hello"))
+          (b (denote-sync-get-backend 'silo))
+          (path-fn (lambda () (denote-sync-silo-with-target tgt (denote-get-path-by-id "20261009T100000")))))
+     (denote-sync-push file (list :directory tgt) nil b)
+     (should (eq denote-sync--push-outcome 'pushed))
+     ;; nothing changed: skipped, and says so
+     (denote-sync-push file nil nil b)
+     (should (eq denote-sync--push-outcome 'in-sync))
+     (let ((msg nil))
+       (cl-letf (((symbol-function 'message) (lambda (f &rest a) (setq msg (apply #'format f a)))))
+         (denote-sync-pull nil file b))
+       (should (string-match-p "already up to date" msg)))
+     ;; force overrides
+     (denote-sync-push file nil t b)
+     (should (eq denote-sync--push-outcome 'pushed))
+     ;; both sides edited: no write, reported as a conflict, force overwrites
+     (sleep-for 0.01)
+     (let ((text (with-temp-buffer (insert-file-contents (funcall path-fn)) (buffer-string))))
+       (with-temp-file (funcall path-fn) (insert (string-replace "Hello" "Remote" text))))
+     (denote-sync--write-body file "Local")
+     (denote-sync-push file nil nil b)
+     (should (eq denote-sync--push-outcome 'conflict))
+     ;; interactively, a conflict offers the merge session
+     (let ((noninteractive nil) merged)
+       (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t))
+                 ((symbol-function 'denote-sync-resolve-conflict)
+                  (lambda (f bk) (setq merged (list f bk)))))
+         (denote-sync-push file nil nil b))
+       (should (equal merged (list file b))))
+     (should (string-match-p "Remote" (denote-sync--body-without-front-matter (funcall path-fn))))
+     ;; pull is conflict guarded too: it offers the merge, not an overwrite
+     (let ((noninteractive nil) merged)
+       (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t))
+                 ((symbol-function 'denote-sync-resolve-conflict)
+                  (lambda (f bk) (setq merged (list f bk)))))
+         (denote-sync-pull nil file b))
+       (should (equal merged (list file b)))
+       (should (equal (denote-sync--body-without-front-matter file) "Local")))
+     (denote-sync-pull nil file b t)
+     (should (equal (denote-sync--body-without-front-matter file) "Remote"))
+     (denote-sync--write-body file "Local")
+     (denote-sync-push file nil t b)
+     (should (string-match-p "Local" (denote-sync--body-without-front-matter (funcall path-fn)))))))
+
+(ert-deftest test-denote-sync-silo/one-sided-changes-are-guarded-both-ways ()
+  (test-silo--with-silos
+   (let* ((file (test-silo--note src "20261009T100000" nil "alpha" "Hello"))
+          (b (denote-sync-get-backend 'silo))
+          (path-fn (lambda () (denote-sync-silo-with-target tgt (denote-get-path-by-id "20261009T100000")))))
+     (denote-sync-push file (list :directory tgt) nil b)
+     ;; remote-only: a push would discard the remote edit
+     (sleep-for 0.01)
+     (let ((text (with-temp-buffer (insert-file-contents (funcall path-fn)) (buffer-string))))
+       (with-temp-file (funcall path-fn) (insert (string-replace "Hello" "Remote" text))))
+     (denote-sync-push file nil nil b)
+     (should (eq denote-sync--push-outcome 'remote-changed))
+     (should (string-match-p "Remote" (denote-sync--body-without-front-matter (funcall path-fn))))
+     (denote-sync-pull nil file b)
+     (should (equal (denote-sync--body-without-front-matter file) "Remote"))
+     ;; local-only: a pull would discard the local edit
+     (denote-sync--write-body file "Local")
+     (denote-sync-pull nil file b)
+     (should (equal (denote-sync--body-without-front-matter file) "Local"))
+     (denote-sync-pull nil file b t)
+     (should (equal (denote-sync--body-without-front-matter file) "Remote"))
+     (denote-sync--write-body file "Local")
+     (denote-sync-push file nil nil b)
+     (should (eq denote-sync--push-outcome 'pushed)))))
