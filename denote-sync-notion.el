@@ -76,9 +76,15 @@
       (denote-sync-notion--debug-log args stdout stderr)
       (list exit-code stdout stderr))))
 
+(defun denote-sync-notion--json-args (args)
+  "Return ARGS with `--json' appended, except for `ntn api' which rejects it."
+  (if (or (member "--json" args) (equal (car args) "api"))
+      args
+    (append args '("--json"))))
+
 (defun denote-sync-notion--run-json (args)
   "Run ntn with ARGS (adding `--json'); return parsed JSON alist, or signal error."
-  (let* ((json-args (if (member "--json" args) args (append args '("--json"))))
+  (let* ((json-args (denote-sync-notion--json-args args))
          (result (denote-sync-notion--run json-args))
          (exit-code (nth 0 result))
          (stdout (nth 1 result))
@@ -120,7 +126,7 @@
 (defun denote-sync-notion--run-json-async (args callback)
   "Run ntn with ARGS (adding `--json') asynchronously.
 Calls (CALLBACK ERROR RESULT)."
-  (let ((json-args (if (member "--json" args) args (append args '("--json")))))
+  (let ((json-args (denote-sync-notion--json-args args)))
     (denote-sync-notion--run-async
      json-args
      (lambda (exit-code stdout stderr)
