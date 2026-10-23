@@ -186,7 +186,8 @@ Calls (CALLBACK ERROR RESULT)."
 
 (defconst denote-sync-notion--default-export-properties
   '((Timestamp (date (start . "<today>"))))
-  "Built-in default Notion property values applied to newly created pages.")
+  "Built-in default Notion property values applied to newly created pages.
+Only keys present in the new page's schema are applied.")
 
 (defun denote-sync-notion--export-properties (file)
   "Return FILE's `sync-notion-properties' front-matter value, parsed but unresolved."
@@ -347,7 +348,8 @@ Calls (CALLBACK ERROR RESULT)."
      id
      (denote-sync-notion--merge-properties (denote-sync-notion--export-properties file)
                                            registry-props
-                                           denote-sync-notion--default-export-properties))
+                                           (seq-filter (lambda (kv) (assq (car kv) (map-elt page 'properties)))
+                                                       denote-sync-notion--default-export-properties)))
     (list :id id :url url :created-time created :edited-time edited)))
 
 (defun denote-sync-notion--update (file id content _force)

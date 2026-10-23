@@ -818,6 +818,21 @@ the property-value structure."
 ;; `sync-notion-properties' sets it explicitly -- see
 ;; `denote-sync-notion--default-export-properties'.
 
+(defconst test-denote-notion--create-response-with-timestamp-json
+  "{\"id\": \"new-page-id\", \"url\": \"https://app.notion.com/p/new\", \"created_time\": \"2026-03-01T00:00:00.000Z\", \"last_edited_time\": \"2026-03-01T00:00:00.000Z\", \"properties\": {\"Timestamp\": {\"type\": \"date\"}}}")
+
+(ert-deftest test-denote-notion/export-create-skips-default-timestamp-without-schema-property ()
+  "No Timestamp PATCH is sent when the page's schema has no Timestamp property."
+  (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
+    (cl-letf (((symbol-function 'denote-sync-notion--run-json)
+               (lambda (args)
+                 (cond
+                  ((member "create" args)
+                   (json-parse-string test-denote-notion--create-response-json
+                                      :object-type 'alist :array-type 'list))
+                  (t (error "unexpected call: %S" args))))))
+      (denote-sync--export-create file (denote-sync-get-backend 'notion) '(database . "db-id")))))
+
 (ert-deftest test-denote-notion/export-create-applies-default-timestamp ()
   "Timestamp is populated with today's date on creation with no override."
   (test-denote-notion--with-fixture test-denote-notion--untracked-fixture
@@ -827,7 +842,7 @@ the property-value structure."
                  (lambda (args)
                    (cond
                     ((member "create" args)
-                     (json-parse-string test-denote-notion--create-response-json
+                     (json-parse-string test-denote-notion--create-response-with-timestamp-json
                                         :object-type 'alist :array-type 'list))
                     ((member "api" args)
                      (setq patched-data (nth (1+ (seq-position args "--data")) args))
