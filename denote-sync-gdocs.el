@@ -511,26 +511,6 @@ Optional ACCOUNT specifies the Google account email; defaults to
           (unless (string-empty-p folder) folder))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Backend registration
-
-(denote-sync-register-backend
- (denote-sync-backend-create
-  :name 'google-docs
-  :frontmatter-prefix "gdoc"
-  :create-fn #'denote-sync-gdocs--create
-  :update-fn #'denote-sync-gdocs--update
-  :fetch-remote-fn #'denote-sync-gdocs--fetch-remote
-  :link-url-fn #'denote-sync-gdocs--link-url
-  :extract-id-fn #'denote-sync-gdocs--extract-doc-id
-  :async-fetch-remote-fn #'denote-sync-gdocs--async-fetch-remote
-  :async-push-fn #'denote-sync-gdocs--async-push
-  :async-refresh-fn #'denote-sync-gdocs--async-refresh
-  :refresh-fn #'denote-sync-gdocs--refresh-file
-  :import-fn #'denote-sync-gdocs--import-doc
-  :read-parent-fn #'denote-sync-gdocs--read-parent
-  :format-parent-fn #'denote-sync-gdocs--format-parent
-  :parse-parent-fn nil))
-
 ;;;###autoload
 (defun denote-sync-gdocs-set-account (&optional file account)
   "Set the Google account for FILE (defaults to current note) to ACCOUNT.

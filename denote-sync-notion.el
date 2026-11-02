@@ -477,27 +477,6 @@ Only keys present in the new page's schema are applied.")
     (cons type (denote-sync-notion--extract-page-id id))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Backend registration
-
-(denote-sync-register-backend
- (denote-sync-backend-create
-  :name 'notion
-  :frontmatter-prefix "notion"
-  :create-fn #'denote-sync-notion--create
-  :update-fn #'denote-sync-notion--update
-  :fetch-remote-fn #'denote-sync-notion--fetch-remote
-  :link-url-fn #'denote-sync-notion--link-url
-  :extract-id-fn #'denote-sync-notion--extract-page-id
-  :async-fetch-remote-fn #'denote-sync-notion--async-fetch-remote
-  :async-push-fn #'denote-sync-notion--async-push
-  :async-refresh-fn #'denote-sync-notion--async-refresh
-  :refresh-fn #'denote-sync-notion--refresh-file
-  :import-fn #'denote-sync-notion--import-page
-  :read-parent-fn #'denote-sync-notion--read-parent
-  :format-parent-fn #'denote-sync-notion--parent-arg
-  :parse-parent-fn #'denote-sync-notion--parse-parent-arg))
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Notion-specific helpers and test shims
 

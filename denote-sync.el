@@ -53,7 +53,97 @@
                         ; A nil CONTENT defers rendering to the backend's create/update-fn.
   )
 
-(defvar denote-sync-backends nil
+(declare-function denote-sync-gdocs--create "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--update "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--fetch-remote "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--link-url "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--extract-doc-id "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--async-fetch-remote "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--async-push "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--async-refresh "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--refresh-file "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--import-doc "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--read-parent "denote-sync-gdocs")
+(declare-function denote-sync-gdocs--format-parent "denote-sync-gdocs")
+
+(declare-function denote-sync-notion--create "denote-sync-notion")
+(declare-function denote-sync-notion--update "denote-sync-notion")
+(declare-function denote-sync-notion--fetch-remote "denote-sync-notion")
+(declare-function denote-sync-notion--link-url "denote-sync-notion")
+(declare-function denote-sync-notion--extract-page-id "denote-sync-notion")
+(declare-function denote-sync-notion--async-fetch-remote "denote-sync-notion")
+(declare-function denote-sync-notion--async-push "denote-sync-notion")
+(declare-function denote-sync-notion--async-refresh "denote-sync-notion")
+(declare-function denote-sync-notion--refresh-file "denote-sync-notion")
+(declare-function denote-sync-notion--import-page "denote-sync-notion")
+(declare-function denote-sync-notion--read-parent "denote-sync-notion")
+(declare-function denote-sync-notion--parent-arg "denote-sync-notion")
+(declare-function denote-sync-notion--parse-parent-arg "denote-sync-notion")
+
+(declare-function denote-sync-silo--create "denote-sync-silo")
+(declare-function denote-sync-silo--update "denote-sync-silo")
+(declare-function denote-sync-silo--fetch-remote "denote-sync-silo")
+(declare-function denote-sync-silo--link-url "denote-sync-silo")
+(declare-function denote-sync-silo--extract-id "denote-sync-silo")
+(declare-function denote-sync-silo--async-fetch-remote "denote-sync-silo")
+(declare-function denote-sync-silo--async-push "denote-sync-silo")
+(declare-function denote-sync-silo--async-refresh "denote-sync-silo")
+(declare-function denote-sync-silo--refresh "denote-sync-silo")
+(declare-function denote-sync-silo--import "denote-sync-silo")
+(declare-function denote-sync-silo--read-parent "denote-sync-silo")
+(declare-function denote-sync-silo--format-parent "denote-sync-silo")
+(declare-function denote-sync-silo--render "denote-sync-silo")
+
+(defvar denote-sync-backends
+  `((google-docs . ,(denote-sync-backend-create
+                     :name 'google-docs
+                     :frontmatter-prefix "gdoc"
+                     :create-fn #'denote-sync-gdocs--create
+                     :update-fn #'denote-sync-gdocs--update
+                     :fetch-remote-fn #'denote-sync-gdocs--fetch-remote
+                     :link-url-fn #'denote-sync-gdocs--link-url
+                     :extract-id-fn #'denote-sync-gdocs--extract-doc-id
+                     :async-fetch-remote-fn #'denote-sync-gdocs--async-fetch-remote
+                     :async-push-fn #'denote-sync-gdocs--async-push
+                     :async-refresh-fn #'denote-sync-gdocs--async-refresh
+                     :refresh-fn #'denote-sync-gdocs--refresh-file
+                     :import-fn #'denote-sync-gdocs--import-doc
+                     :read-parent-fn #'denote-sync-gdocs--read-parent
+                     :format-parent-fn #'denote-sync-gdocs--format-parent
+                     :parse-parent-fn nil))
+    (notion . ,(denote-sync-backend-create
+                :name 'notion
+                :frontmatter-prefix "notion"
+                :create-fn #'denote-sync-notion--create
+                :update-fn #'denote-sync-notion--update
+                :fetch-remote-fn #'denote-sync-notion--fetch-remote
+                :link-url-fn #'denote-sync-notion--link-url
+                :extract-id-fn #'denote-sync-notion--extract-page-id
+                :async-fetch-remote-fn #'denote-sync-notion--async-fetch-remote
+                :async-push-fn #'denote-sync-notion--async-push
+                :async-refresh-fn #'denote-sync-notion--async-refresh
+                :refresh-fn #'denote-sync-notion--refresh-file
+                :import-fn #'denote-sync-notion--import-page
+                :read-parent-fn #'denote-sync-notion--read-parent
+                :format-parent-fn #'denote-sync-notion--parent-arg
+                :parse-parent-fn #'denote-sync-notion--parse-parent-arg))
+    (silo . ,(denote-sync-backend-create
+              :name 'silo
+              :frontmatter-prefix "silo"
+              :create-fn #'denote-sync-silo--create
+              :update-fn #'denote-sync-silo--update
+              :fetch-remote-fn #'denote-sync-silo--fetch-remote
+              :link-url-fn #'denote-sync-silo--link-url
+              :extract-id-fn #'denote-sync-silo--extract-id
+              :async-fetch-remote-fn #'denote-sync-silo--async-fetch-remote
+              :async-push-fn #'denote-sync-silo--async-push
+              :async-refresh-fn #'denote-sync-silo--async-refresh
+              :refresh-fn #'denote-sync-silo--refresh
+              :import-fn #'denote-sync-silo--import
+              :read-parent-fn #'denote-sync-silo--read-parent
+              :format-parent-fn #'denote-sync-silo--format-parent
+              :parse-parent-fn nil
+              :render-fn #'denote-sync-silo--render)))
   "Alist mapping backend symbol (e.g. \\='notion) to `denote-sync-backend' struct.")
 
 (defun denote-sync-register-backend (backend)
@@ -62,6 +152,10 @@
 
 (defun denote-sync-get-backend (name)
   "Return backend registered under symbol NAME, or signal an error."
+  (pcase name
+    ('google-docs (require 'denote-sync-gdocs nil t))
+    ('notion (require 'denote-sync-notion nil t))
+    ('silo (require 'denote-sync-silo nil t)))
   (or (alist-get name denote-sync-backends)
       (error "Unknown sync backend: %s" name)))
 

@@ -808,26 +808,5 @@ push that fails are returned to the untracked state."
     (mapcar (lambda (item) (cons (car item) (plist-get (cdr item) :id))) plan)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Backend registration
-
-(denote-sync-register-backend
- (denote-sync-backend-create
-  :name 'silo
-  :frontmatter-prefix "silo"
-  :create-fn #'denote-sync-silo--create
-  :update-fn #'denote-sync-silo--update
-  :fetch-remote-fn #'denote-sync-silo--fetch-remote
-  :link-url-fn #'denote-sync-silo--link-url
-  :extract-id-fn #'denote-sync-silo--extract-id
-  :async-fetch-remote-fn #'denote-sync-silo--async-fetch-remote
-  :async-push-fn #'denote-sync-silo--async-push
-  :async-refresh-fn #'denote-sync-silo--async-refresh
-  :refresh-fn #'denote-sync-silo--refresh
-  :import-fn #'denote-sync-silo--import
-  :read-parent-fn #'denote-sync-silo--read-parent
-  :format-parent-fn #'denote-sync-silo--format-parent
-  :parse-parent-fn nil
-  :render-fn #'denote-sync-silo--render))
-
 (provide 'denote-sync-silo)
 ;;; denote-sync-silo.el ends here
