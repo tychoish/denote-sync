@@ -2,6 +2,9 @@
 
 ;;; Code:
 
+(let ((repo-dir (file-name-directory (directory-file-name (file-name-directory (or load-file-name (buffer-file-name)))))))
+  (add-to-list 'load-path repo-dir))
+
 (require 'ert)
 (require 'denote-sync)
 (require 'denote-sync-silo)

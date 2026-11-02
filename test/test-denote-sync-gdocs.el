@@ -2,12 +2,15 @@
 
 ;;; Code:
 
+(let ((repo-dir (file-name-directory (directory-file-name (file-name-directory (or load-file-name (buffer-file-name)))))))
+  (add-to-list 'load-path repo-dir))
+
 (require 'ert)
 (require 'cl-lib)
 (require 'denote-sync)
 
 ;; Ensure local workspace files take precedence over any installed ELPA package
-(let ((repo-dir (file-name-directory (directory-file-name (file-name-directory (or load-file-name (buffer-file-name)))))))
+)))))
   (add-to-list 'load-path repo-dir)
   (load (expand-file-name "denote-sync-gdocs.el" repo-dir) nil t)
   (load (expand-file-name "denote-sync-bootstrap.el" repo-dir) nil t))
