@@ -155,10 +155,15 @@ Installation needs network access, git and a C compiler."
 
 (defun mdwn--children (node)
   "Return NODE's block children as Org elements, blank-line separated."
-  (let ((els (mapcan #'mdwn--block (treesit-node-children node t))))
-    (seq-do-indexed (lambda (el i)
-                      (org-element-put-property el :post-blank (if (< i (1- (length els))) 1 0)))
-                    els)
+  (let* ((els (mapcan #'mdwn--block (treesit-node-children node t)))
+         (last-tail (last els)))
+    ;; `funcall' on the quoted function sidesteps Org's compiler-macro, whose
+    ;; expansion overflows `max-lisp-eval-depth' when byte-compiling on 29.4.
+    (let ((tail els))
+      (while tail
+        (funcall #'org-element-put-property (car tail) :post-blank
+                 (if (eq tail last-tail) 0 1))
+        (setq tail (cdr tail))))
     els))
 
 (defun mdwn--paragraph (node)
